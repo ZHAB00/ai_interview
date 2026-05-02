@@ -1,0 +1,44 @@
+"""Interview-related Pydantic schemas."""
+
+from datetime import datetime
+from typing import Any
+
+from pydantic import BaseModel, Field
+
+
+class CreateInterviewRequest(BaseModel):
+    resume_id: int | None = None
+    position: str = Field(..., min_length=1)
+    difficulty: str = Field(default="中级", pattern=r"^(初级|中级|高级)$")
+    mode: str = Field(default="full", pattern=r"^(full|stage)$")
+    selected_stages: list[str] | None = None
+
+
+class CreateInterviewResponse(BaseModel):
+    interview_id: int
+    ws_token: str
+    ws_url: str
+    expires_in: int = 300
+
+
+class InterviewHistoryItem(BaseModel):
+    interview_id: int
+    position: str
+    difficulty: str
+    mode: str
+    status: str
+    overall_score: int | None = None
+    passed: bool | None = None
+    created_at: datetime
+
+
+class InterviewHistoryResponse(BaseModel):
+    items: list[InterviewHistoryItem]
+    total: int
+    page: int
+    page_size: int
+
+
+class ReportStatusResponse(BaseModel):
+    status: str  # "generating" | "completed"
+    report: dict[str, Any] | None = None
