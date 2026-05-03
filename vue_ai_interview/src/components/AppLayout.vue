@@ -43,8 +43,8 @@ async function fetchInviteCode() {
     const { data } = await api.get('/api/auth/invite-code')
     inviteCode.value = data.invite_code
     countdown.value = calcRemaining()
-  } catch {
-    inviteCode.value = '---'
+  } catch (err) {
+    inviteCode.value = err.response?.status === 401 ? '请重新登录' : '获取失败'
   }
 }
 

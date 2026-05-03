@@ -40,8 +40,8 @@ export const useAuthStore = defineStore('auth', () => {
     if (!refreshToken.value) return false
     try {
       const baseURL = getBaseURL()
-      const { data } = await axios.post(`${baseURL}/api/auth/refresh`, {}, {
-        headers: { Authorization: `Bearer ${refreshToken.value}` }
+      const { data } = await axios.post(`${baseURL}/api/auth/refresh`, {
+        refresh_token: refreshToken.value
       })
       saveTokens(data.access_token, data.refresh_token)
       saveUserInfo({ user_id: data.user_id, username: data.username, role: data.role })

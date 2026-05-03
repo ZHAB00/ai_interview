@@ -9,9 +9,7 @@ export function register(phone, username, password, inviteCode, smsToken) {
 }
 
 export function refreshToken(refreshTokenVal) {
-  return api.post('/api/auth/refresh', {}, {
-    headers: { Authorization: `Bearer ${refreshTokenVal}` }
-  })
+  return api.post('/api/auth/refresh', { refresh_token: refreshTokenVal })
 }
 
 export function sendSms(phone, captchaType = 'register') {

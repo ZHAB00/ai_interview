@@ -136,7 +136,7 @@ def create_file_token(user_id: int, filename: str) -> str:
     """Create a JWT for authenticated file download. 7-day TTL for report playback."""
     expire = datetime.now(timezone.utc) + timedelta(days=_FILE_TOKEN_EXPIRE_DAYS)
     return jwt.encode(
-        {"sub": user_id, "file": filename, "type": "file_access", "jti": uuid.uuid4().hex, "exp": expire},
+        {"sub": str(user_id), "file": filename, "type": "file_access", "jti": uuid.uuid4().hex, "exp": expire},
         settings.SECRET_KEY,
         algorithm=settings.JWT_ALGORITHM,
     )
