@@ -214,7 +214,7 @@ class CaptchaService:
                     item = json.loads(raw)
                 except json.JSONDecodeError:
                     continue
-                if item.get("phone") == phone and item.get("type") == captcha_type:
+                if isinstance(item, dict) and item.get("phone") == phone and item.get("type") == captcha_type:
                     matches.append((key, item))
             if cursor == 0:
                 break

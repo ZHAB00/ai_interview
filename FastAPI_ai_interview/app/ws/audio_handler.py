@@ -732,7 +732,7 @@ class AudioHandler:
             return b""
         return bytes(buf)
 
-    async def merge_and_upload(self, interview_id: int) -> str:
+    async def merge_and_upload(self, interview_id: int, user_id: int | None = None) -> str:
         """Merge PCM chunks into a WAV file and upload to object storage.
 
         Returns the URL of the uploaded audio file, or an empty string on failure.
@@ -806,4 +806,4 @@ class AudioHandler:
     async def end_interview(self, interview_id: int, user_id: int | None = None) -> str:
         """End recording and return the merged audio URL."""
         self._utterance_buffers.pop(interview_id, None)
-        return await self.merge_and_upload(interview_id)
+        return await self.merge_and_upload(interview_id, user_id)

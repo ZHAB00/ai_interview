@@ -47,7 +47,8 @@ services:
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       SECRET_KEY: ${SECRET_KEY:?required}
     volumes:
-      - ./uploads:/app/uploads
+      - uploads_data:/app/uploads
+      - faiss_data:/app/data/faiss
     depends_on:
       mysql:
         condition: service_healthy
@@ -73,7 +74,7 @@ services:
       REDIS_PASSWORD: ${REDIS_PASSWORD:?required}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
     volumes:
-      - ./uploads:/app/uploads
+      - uploads_data:/app/uploads
     depends_on:
       mysql:
         condition: service_healthy
@@ -96,3 +97,5 @@ services:
 
 volumes:
   mysql_data:
+  uploads_data:
+  faiss_data:

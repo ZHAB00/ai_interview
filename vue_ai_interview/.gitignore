@@ -40,3 +40,6 @@ __screenshots__/
 
 # Vite
 *.timestamp-*-*.mjs
+
+# Project docs (sensitive, local only)
+项目说明文件/
