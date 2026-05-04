@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import loader from '@monaco-editor/loader'
 
 const props = defineProps({
@@ -17,6 +17,12 @@ let editor = null
 let monacoInstance = null
 const editorReady = ref(false)
 const submitting = ref(false)
+const windowWidth = ref(window.innerWidth)
+const isMobile = computed(() => windowWidth.value <= 768)
+
+function onResize() { windowWidth.value = window.innerWidth }
+onMounted(() => window.addEventListener('resize', onResize))
+onUnmounted(() => window.removeEventListener('resize', onResize))
 
 function monacoLang(lang) {
   const map = {
@@ -35,8 +41,10 @@ function monacoLang(lang) {
   return map[lang?.toLowerCase()] || 'plaintext'
 }
 
+const mobileCode = ref(props.modelValue)
+
 function handleSubmit() {
-  const code = editor?.getValue() || ''
+  const code = isMobile.value ? mobileCode.value : (editor?.getValue() || '')
   if (!code.trim()) return
   emit('submit', code)
 }
@@ -113,7 +121,18 @@ watch(() => props.modelValue, (val) => {
       <p>{{ description }}</p>
     </div>
 
-    <div ref="editorContainer" class="ce-editor"></div>
+    <!-- Desktop: Monaco Editor -->
+    <div v-if="!isMobile" ref="editorContainer" class="ce-editor"></div>
+
+    <!-- Mobile: textarea fallback -->
+    <textarea
+      v-else
+      v-model="mobileCode"
+      class="ce-textarea"
+      :readonly="readOnly"
+      :placeholder="'请输入' + (language || '') + '代码...'"
+      spellcheck="false"
+    />
 
     <div class="ce-actions" v-if="!readOnly">
       <el-button type="primary" :disabled="!modelValue?.trim()" :loading="submitting" @click="handleSubmit">
@@ -172,6 +191,54 @@ watch(() => props.modelValue, (val) => {
 .ce-editor {
   flex: 1;
   min-height: 200px;
+}
+
+/* Mobile textarea */
+.ce-textarea {
+  flex: 1;
+  min-height: 200px;
+  background: #1E1E1E;
+  color: #D4D4D4;
+  border: none;
+  padding: 12px 16px;
+  font-family: Consolas, Monaco, 'Courier New', monospace;
+  font-size: 14px;
+  line-height: 1.6;
+  resize: none;
+  outline: none;
+}
+.ce-textarea::placeholder {
+  color: #6B7280;
+}
+
+@media (max-width: 768px) {
+  .code-editor-panel {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    height: 100vh;
+  }
+
+  .ce-header {
+    padding: 8px 12px;
+  }
+  .ce-header h4 { font-size: 13px; }
+
+  .ce-description {
+    max-height: 80px;
+    overflow-y: auto;
+    padding: 8px 12px;
+  }
+
+  .ce-textarea {
+    font-size: 13px;
+    padding: 10px;
+  }
+
+  .ce-actions {
+    padding: 8px 12px;
+    gap: 8px;
+  }
 }
 
 .ce-actions {

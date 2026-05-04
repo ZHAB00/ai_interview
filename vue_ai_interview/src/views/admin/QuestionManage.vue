@@ -197,6 +197,10 @@ onMounted(loadList)
 <template>
   <div class="admin-page">
     <div class="page-header">
+      <div class="admin-mobile-nav">
+        <router-link to="/admin/questions" class="am-nav active">题库管理</router-link>
+        <router-link to="/admin/documents" class="am-nav">文档管理</router-link>
+      </div>
       <h1>题库管理</h1>
       <el-button type="primary" @click="openCreate">新增题目</el-button>
     </div>
@@ -388,5 +392,13 @@ onMounted(loadList)
   display: flex;
   gap: 8px;
   align-items: center;
+}
+/* Mobile admin nav */
+.admin-mobile-nav { display: none; }
+@media (max-width: 768px) {
+  .admin-page { padding: 12px 10px 60px; }
+  .admin-mobile-nav { display: flex; gap: 0; margin-bottom: 12px; border-radius: 4px; overflow: hidden; border: 1px solid var(--color-border); }
+  .am-nav { flex: 1; text-align: center; padding: 8px 0; font-size: 13px; color: var(--color-text-secondary); background: var(--color-card); text-decoration: none; }
+  .am-nav.active { color: var(--color-accent); background: rgba(43,58,103,0.06); font-weight: 500; }
 }
 </style>

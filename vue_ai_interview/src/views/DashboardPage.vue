@@ -1,6 +1,6 @@
 <script setup>
-import { reactive, ref, onMounted, computed, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { reactive, ref, onMounted, onUnmounted, computed, watch } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { uploadResume } from '../services/resumeService.js'
 import { createInterview, getInterviewHistory } from '../services/interviewService.js'
@@ -9,6 +9,10 @@ import GuideCard from '../components/GuideCard.vue'
 import { steps } from '../components/GuideCard.vue'
 
 const router = useRouter()
+const route = useRoute()
+const viewMode = computed(() => route.query.view || 'default')
+// Desktop: always show everything. Mobile: toggle based on viewMode.
+const isHistoryView = computed(() => viewMode.value === 'history')
 
 // --- Resume Upload State ---
 const uploadState = ref('idle') // idle | uploading | parsing | done | error
@@ -259,12 +263,11 @@ const guideSteps = steps
 </script>
 
 <template>
-  <div class="dashboard-page">
+  <div class="dashboard-page" :class="{ 'view-history': isHistoryView }">
     <div class="page-container">
-      <h1 class="page-title">面试控制台</h1>
-      <p class="page-desc">上传简历，配置面试参数，开始您的模拟面试练习</p>
-
-      <!-- Resume Upload Section -->
+      <h1 class="page-title title-default">面试控制台</h1>
+      <p class="page-desc title-default">上传简历，配置面试参数，开始您的模拟面试练习</p>
+      <h1 class="page-title title-history">面试记录</h1>
       <section class="card upload-section" v-if="uploadState !== 'done'">
         <div class="section-header">
           <h3>第一步：上传简历</h3>
@@ -432,11 +435,86 @@ const guideSteps = steps
         </section>
       </template>
 
+      <!-- Active Interview Banner (always visible) -->
+      <section class="card active-banner" v-if="activeInterviewId" @click="continueInterview">
+        <div class="banner-content">
+          <span class="banner-dot" />
+          <span>您有一个进行中的面试</span>
+          <el-button type="primary" size="small" plain>继续面试</el-button>
+        </div>
+      </section>
+
       <!-- History Section -->
       <section class="card history-section">
         <div class="section-header">
-          <h3>最近面试记录</h3>
-          <span class="section-hint" v-if="history.length">最近 5 条</span>
+          <h3>面试记录</h3>
+          <span class="section-hint" v-if="historyTotal">共 {{ historyTotal }} 条，收藏 {{ history.filter(h => h.is_favorited).length }}/5</span>
+        </div>
+
+        <!-- Favorites -->
+        <template v-if="history.some(h => h.is_favorited)">
+          <div class="fav-header">我的收藏</div>
+          <div class="history-cards">
+            <div
+              v-for="row in history.filter(h => h.is_favorited)"
+              :key="'fav-' + row.interview_id"
+              class="history-card favorited"
+            >
+              <div class="hc-top">
+                <span class="hc-star">★</span>
+                <span class="hc-position">{{ row.position }}</span>
+                <el-tag :type="statusConfig(row.status).type" size="small">{{ statusConfig(row.status).text }}</el-tag>
+              </div>
+              <div class="hc-mid">
+                <span>{{ row.difficulty }} / {{ row.mode === 'full' ? '全流程' : '阶段' }}</span>
+                <span v-if="row.overall_score != null" class="hc-score" :class="{ pass: row.passed, fail: !row.passed }">{{ row.overall_score }}分</span>
+                <span class="hc-time">{{ formatTime(row.created_at) }}</span>
+              </div>
+              <div class="hc-actions">
+                <el-button v-if="row.status === 'completed'" size="small" @click="viewReport(row.interview_id)">查看报告</el-button>
+                <el-button size="small" @click="toggleFav(row)">取消收藏</el-button>
+                <el-button size="small" type="danger" @click="deleteInterviewItem(row)">删除</el-button>
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <!-- Others -->
+        <template v-if="history.some(h => !h.is_favorited)">
+          <div class="fav-header" v-if="history.some(h => h.is_favorited)">其他记录</div>
+          <div class="history-cards">
+            <div
+              v-for="row in history.filter(h => !h.is_favorited)"
+              :key="row.interview_id"
+              class="history-card"
+            >
+              <div class="hc-top">
+                <span class="hc-position">{{ row.position }}</span>
+                <el-tag :type="statusConfig(row.status).type" size="small">{{ statusConfig(row.status).text }}</el-tag>
+              </div>
+              <div class="hc-mid">
+                <span>{{ row.difficulty }} / {{ row.mode === 'full' ? '全流程' : '阶段' }}</span>
+                <span v-if="row.overall_score != null" class="hc-score" :class="{ pass: row.passed, fail: !row.passed }">{{ row.overall_score }}分</span>
+                <span class="hc-time">{{ formatTime(row.created_at) }}</span>
+              </div>
+              <div class="hc-actions">
+                <el-button v-if="row.status === 'completed'" size="small" @click="viewReport(row.interview_id)">查看报告</el-button>
+                <el-button size="small" @click="toggleFav(row)">收藏</el-button>
+                <el-button size="small" type="danger" @click="deleteInterviewItem(row)">删除</el-button>
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <div class="history-pagination" v-if="historyTotal > pageSize">
+          <el-pagination
+            layout="prev, pager, next"
+            :total="historyTotal"
+            :page-size="pageSize"
+            :current-page="historyPage"
+            @current-change="loadHistory"
+            small
+          />
         </div>
         <el-table :data="history" v-loading="historyLoading" style="width: 100%" :show-header="false">
           <el-table-column label="岗位" min-width="160">
@@ -620,20 +698,45 @@ const guideSteps = steps
   margin-top: 6px;
 }
 
-/* History */
-.history-position {
-  display: block;
-  font-size: 13px;
-  color: var(--color-text);
+/* Active Banner */
+.active-banner {
+  cursor: pointer;
+  border-left: 3px solid var(--color-accent);
+  transition: background 0.2s;
 }
-.history-meta {
-  font-size: 11px;
-  color: var(--color-text-secondary);
+.active-banner:hover { background: rgba(43, 58, 103, 0.03); }
+.banner-content {
+  display: flex; align-items: center; gap: 12px;
 }
-.history-time {
-  font-size: 12px;
-  color: var(--color-text-secondary);
+.banner-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: #67C23A; flex-shrink: 0; animation: blink 1.5s step-end infinite;
 }
+
+/* History — Card layout */
+.fav-header {
+  font-size: 13px; font-weight: 600; color: var(--color-accent);
+  padding: 12px 0 8px; border-bottom: 1px solid var(--color-border-light);
+  margin-bottom: 10px;
+}
+.fav-header:first-child { padding-top: 0; }
+.history-cards { display: flex; flex-direction: column; gap: 10px; }
+.history-card {
+  padding: 12px; border: 1px solid var(--color-border-light);
+  border-radius: 4px; background: var(--color-card);
+  display: flex; flex-direction: column; gap: 6px;
+}
+.history-card.favorited { border-color: rgba(217, 163, 74, 0.3); background: rgba(217, 163, 74, 0.04); }
+.hc-top { display: flex; align-items: center; gap: 8px; }
+.hc-star { color: #D9A34A; font-size: 14px; }
+.hc-position { font-size: 14px; font-weight: 500; color: var(--color-text); flex: 1; }
+.hc-mid { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--color-text-secondary); flex-wrap: wrap; }
+.hc-score { font-weight: 600; }
+.hc-score.pass { color: var(--color-success); }
+.hc-score.fail { color: var(--color-error); }
+.hc-time { margin-left: auto; }
+.hc-actions { display: flex; gap: 8px; }
+.history-pagination { display: flex; justify-content: center; margin-top: 12px; }
 
 /* Parsing Overlay */
 .parsing-overlay {
@@ -688,5 +791,39 @@ const guideSteps = steps
   0% { transform: translateX(-100%); }
   50% { transform: translateX(280%); }
   100% { transform: translateX(-100%); }
+}
+/* Title visibility */
+.title-history { display: none; }
+
+/* ── Mobile (≤768px) ── */
+@media (max-width: 768px) {
+  .dashboard-page {
+    padding: 16px 12px 48px;
+  }
+
+  .summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .history-table-wrap {
+    overflow-x: auto;
+  }
+
+  .parsing-card {
+    padding: 24px 20px;
+    margin: 0 16px;
+  }
+
+  /* History view on mobile: show history title + cards, hide upload/config */
+  .dashboard-page.view-history .title-default,
+  .dashboard-page.view-history .upload-section,
+  .dashboard-page.view-history .config-section,
+  .dashboard-page.view-history .resume-summary { display: none; }
+  .dashboard-page.view-history .title-history { display: block; }
+
+  /* Default view on mobile: hide history section, show upload/config */
+  .dashboard-page:not(.view-history) .history-section { display: none; }
+  .dashboard-page:not(.view-history) .title-history { display: none; }
+  .dashboard-page:not(.view-history) .title-default { display: block; }
 }
 </style>

@@ -652,4 +652,41 @@ function formatTime(iso) {
   color: var(--color-text-secondary);
   margin-top: 8px;
 }
+/* ── Mobile (≤768px) ── */
+@media (max-width: 768px) {
+  .report-container {
+    padding: 16px 12px;
+  }
+
+  .overview-main {
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .score-number {
+    font-size: 36px;
+  }
+
+  .chart-container {
+    height: 260px;
+  }
+
+  .replay-layout {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .replay-audio {
+    width: 100%;
+  }
+
+  .error-header {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .report-meta {
+    font-size: 12px;
+  }
+}
 </style>

@@ -7,6 +7,7 @@ import { useInterviewStore } from '../stores/interviewStore.js'
 import NetworkStatus from './NetworkStatus.vue'
 import { ETHICS_STATEMENT } from '../utils/constants.js'
 import api from '../services/api.js'
+import { getActiveInterview, getInterviewHistory } from '../services/interviewService.js'
 
 const router = useRouter()
 const route = useRoute()
@@ -16,6 +17,80 @@ const interviewStore = useInterviewStore()
 const isInterviewActive = computed(() =>
   interviewStore.status === 'in_progress'
 )
+
+// --- Bottom Tab ---
+const hasActiveInterview = ref(false)
+const activeInterviewId = ref(null)
+
+async function checkActive() {
+  try {
+    const { data } = await getActiveInterview()
+    hasActiveInterview.value = data.active
+    activeInterviewId.value = data.interview_id
+  } catch { /* ignore */ }
+}
+onMounted(checkActive)
+
+const adminTabSub = ref('questions')
+const tabs = computed(() => {
+  const items = [
+    { key: 'dashboard', label: '首页', icon: 'HomeFilled', path: '/dashboard' },
+    { key: 'interview', label: '面试', icon: 'Mic', path: isInterviewActive.value ? route.path : '/dashboard' },
+    { key: 'report', label: '报告', icon: 'Document', path: '/dashboard' },
+  ]
+  if (authStore.isAdmin) {
+    items.push({ key: 'admin', label: '管理', icon: 'Setting', path: adminTabSub.value === 'questions' ? '/admin/questions' : '/admin/documents' })
+  }
+  return items
+})
+
+const activeTab = computed(() => {
+  const p = route.path
+  if (p.startsWith('/interview')) return 'interview'
+  if (p.startsWith('/report')) return 'report'
+  if (p.startsWith('/admin')) return 'admin'
+  return 'dashboard'
+})
+
+async function goTab(tab) {
+  // Interview tab while in interview: stay there
+  if (tab.key === 'interview' && isInterviewActive.value) return
+
+  // Leaving interview: confirm
+  if (isInterviewActive.value && (tab.key === 'dashboard' || tab.key === 'report' || tab.key === 'admin')) {
+    ElMessageBox.confirm('正在面试中，确定离开吗？', '提示', { confirmButtonText: '离开', cancelButtonText: '继续面试', type: 'warning' })
+      .then(() => router.push(tab.path))
+      .catch(() => {})
+    return
+  }
+
+  // Interview tab without active interview
+  if (tab.key === 'interview' && !isInterviewActive.value) {
+    if (hasActiveInterview.value) {
+      router.push(`/interview/${activeInterviewId.value}`)
+      return
+    }
+    ElMessage.info('暂无进行中的面试，请先上传简历创建面试')
+    return
+  }
+
+  // Report tab — show history list
+  if (tab.key === 'report') {
+    router.push('/dashboard?view=history')
+    return
+  }
+
+  // Admin tab — toggle between questions and documents
+  if (tab.key === 'admin') {
+    if (activeTab.value === 'admin') {
+      adminTabSub.value = adminTabSub.value === 'questions' ? 'documents' : 'questions'
+    }
+    router.push(adminTabSub.value === 'questions' ? '/admin/questions' : '/admin/documents')
+    return
+  }
+
+  router.push(tab.path)
+}
 
 // --- Invite Code ---
 const inviteDialog = ref(false)
@@ -30,7 +105,7 @@ function calcRemaining() {
   const quarter = Math.floor(min / 15)
   const nextMin = (quarter + 1) * 15
   let diffMin = nextMin - min
-  if (diffMin >= 15) diffMin -= 15 // wrap: should not happen, defensive
+  if (diffMin >= 15) diffMin -= 15
   const totalSec = diffMin * 60 - sec
   if (totalSec <= 0) return '刷新中...'
   const m = Math.floor(totalSec / 60)
@@ -117,6 +192,20 @@ function handleLogout() {
     <footer class="app-footer">
       {{ ETHICS_STATEMENT }}
     </footer>
+
+    <!-- Bottom Tab Bar (mobile only) -->
+    <nav class="bottom-tabs">
+      <div
+        v-for="tab in tabs"
+        :key="tab.key"
+        class="tab-item"
+        :class="{ active: activeTab === tab.key }"
+        @click="goTab(tab)"
+      >
+        <el-icon :size="20"><component :is="tab.icon" /></el-icon>
+        <span class="tab-label">{{ tab.label }}</span>
+      </div>
+    </nav>
 
     <!-- Invite Code Dialog -->
     <el-dialog v-model="inviteDialog" title="内测邀请码" width="380px" :close-on-click-modal="false" @close="closeInviteDialog">
@@ -233,5 +322,69 @@ function handleLogout() {
   border-top: 1px solid var(--color-border-light);
   background: var(--color-card);
   flex-shrink: 0;
+}
+
+/* --- Bottom Tab Bar (mobile) --- */
+.bottom-tabs {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .app-header {
+    height: 40px;
+    padding: 0 12px;
+  }
+
+  .header-right {
+    gap: 8px;
+  }
+
+  .app-footer {
+    display: none;
+  }
+
+  .app-content {
+    padding-bottom: 56px;
+  }
+
+  .invite-code-display {
+    font-size: 22px;
+    letter-spacing: 4px;
+  }
+
+  .bottom-tabs {
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 56px;
+    background: var(--color-card);
+    border-top: 1px solid var(--color-border);
+    z-index: 1000;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .tab-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding: 4px 12px;
+    cursor: pointer;
+    color: var(--color-text-secondary);
+    transition: color 0.2s;
+  }
+
+  .tab-item.active {
+    color: var(--color-accent);
+  }
+
+  .tab-label {
+    font-size: 10px;
+    line-height: 1;
+  }
 }
 </style>

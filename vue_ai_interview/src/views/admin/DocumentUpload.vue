@@ -100,6 +100,10 @@ onMounted(loadList)
 <template>
   <div class="admin-page">
     <div class="page-header">
+      <div class="admin-mobile-nav">
+        <router-link to="/admin/questions" class="am-nav">题库管理</router-link>
+        <router-link to="/admin/documents" class="am-nav active">文档管理</router-link>
+      </div>
       <h1>文档管理</h1>
       <el-button type="primary" @click="dialogVisible = true">上传文档</el-button>
     </div>
@@ -205,5 +209,12 @@ onMounted(loadList)
   font-size: 12px;
   color: var(--color-text-secondary);
   margin-top: 6px;
+}
+.admin-mobile-nav { display: none; }
+@media (max-width: 768px) {
+  .admin-page { padding: 12px 10px 60px; }
+  .admin-mobile-nav { display: flex; gap: 0; margin-bottom: 12px; border-radius: 4px; overflow: hidden; border: 1px solid var(--color-border); }
+  .am-nav { flex: 1; text-align: center; padding: 8px 0; font-size: 13px; color: var(--color-text-secondary); background: var(--color-card); text-decoration: none; }
+  .am-nav.active { color: var(--color-accent); background: rgba(43,58,103,0.06); font-weight: 500; }
 }
 </style>

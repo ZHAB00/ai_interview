@@ -79,4 +79,15 @@ export const steps = [
   color: var(--color-text-secondary);
   margin-top: 2px;
 }
+@media (max-width: 768px) {
+  .guide-card {
+    width: 90vw;
+    max-width: 360px;
+    padding: 20px 16px;
+  }
+  .guide-title { font-size: 18px; }
+  .guide-desc { font-size: 13px; }
+  .guide-steps { gap: 12px; }
+  .guide-step { font-size: 12px; }
+}
 </style>

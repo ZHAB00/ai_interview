@@ -464,4 +464,101 @@ function handleMicToggle() {
 }
 .footer-left { display: flex; align-items: center; gap: 10px; }
 .footer-right { display: flex; align-items: center; }
+
+/* ── Mobile (≤768px) ── */
+@media (max-width: 768px) {
+  .interview-room {
+    height: calc(100vh - 40px - 56px); /* header 40 + bottom tabs 56 */
+  }
+
+  .room-header {
+    height: 40px;
+    padding: 0 10px;
+  }
+  .header-left { gap: 10px; }
+  .header-right { gap: 6px; }
+  .stage-name { font-size: 13px; }
+  .vad-control { display: none; }
+
+  .room-body {
+    flex-direction: column;
+    position: relative;
+  }
+
+  .dialogue-area {
+    flex: 1;
+    padding: 12px 10px;
+    overflow-y: auto;
+  }
+  .msg-text {
+    font-size: 14px;
+    padding: 8px 10px;
+  }
+  .empty-state {
+    font-size: 13px;
+    gap: 8px;
+  }
+
+  /* Right panel → floating overlay */
+  .right-panel {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: auto;
+    padding: 0;
+    background: transparent;
+    border: none;
+    gap: 0;
+    z-index: 10;
+  }
+  .camera-panel {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    border: 2px solid rgba(255,255,255,0.8);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  }
+  .camera-video {
+    border-radius: 50%;
+    object-fit: cover;
+  }
+
+  .avatar-panel {
+    display: none;
+  }
+
+  /* Footer */
+  .room-footer {
+    height: auto;
+    padding: 8px 10px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .footer-left {
+    flex: 1;
+    justify-content: center;
+  }
+  .footer-right {
+    width: 100%;
+  }
+  .footer-right .el-input {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  /* Mic button larger for touch */
+  .mic-area .el-button {
+    width: 56px !important;
+    height: 56px !important;
+  }
+
+  /* Draft bubble full width */
+  .message-row.draft .msg-text {
+    max-width: 100%;
+  }
+  .draft-actions {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+}
 </style>

@@ -10,6 +10,10 @@ import router from './router/index.js'
 
 import './assets/main.css'
 
+// Apply theme before app mounts — prevents white flash on mobile
+const theme = localStorage.getItem('ai_interview_theme') || 'light'
+document.documentElement.setAttribute('data-theme', theme)
+
 const app = createApp(App)
 
 app.use(createPinia())
