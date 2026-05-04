@@ -8,5 +8,6 @@ from app.models.question import Question
 from app.models.document import Document
 from app.models.report import Report
 from app.models.feedback import Feedback
+from app.models.message import Message
 
-__all__ = ["Base", "User", "Resume", "Interview", "Question", "Document", "Report", "Feedback"]
+__all__ = ["Base", "User", "Resume", "Interview", "Question", "Document", "Report", "Feedback", "Message"]

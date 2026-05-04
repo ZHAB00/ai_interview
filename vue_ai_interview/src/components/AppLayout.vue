@@ -42,6 +42,7 @@ const tabs = computed(() => {
   const items = [
     { key: 'dashboard', label: '首页', icon: 'HomeFilled', path: '/dashboard' },
     { key: 'interview', label: '面试', icon: 'Mic', path: isInterviewActive.value ? route.path : '/dashboard' },
+    { key: 'messages', label: '留言', icon: 'ChatDotRound', path: '/messages' },
     { key: 'report', label: '报告', icon: 'Document', path: '/dashboard' },
   ]
   if (authStore.isAdmin) {
@@ -53,6 +54,7 @@ const tabs = computed(() => {
 const activeTab = computed(() => {
   const p = route.path
   if (p.startsWith('/interview')) return 'interview'
+  if (p.startsWith('/messages')) return 'messages'
   if (p.startsWith('/report')) return 'report'
   if (p.startsWith('/admin')) return 'admin'
   return 'dashboard'
@@ -82,7 +84,22 @@ function goTab(tab) {
 
   // Report tab
   if (tab.key === 'report') {
-    router.push(tab.path)
+    router.push('/dashboard?view=history')
+    return
+  }
+
+  // Messages tab
+  if (tab.key === 'messages') {
+    router.push('/messages')
+    return
+  }
+
+  // Admin tab — toggle between questions and documents
+  if (tab.key === 'admin') {
+    if (activeTab.value === 'admin') {
+      adminTabSub.value = adminTabSub.value === 'questions' ? 'documents' : 'questions'
+    }
+    router.push(adminTabSub.value === 'questions' ? '/admin/questions' : '/admin/documents')
     return
   }
 
@@ -164,6 +181,7 @@ function handleLogout() {
       </div>
       <div class="header-right">
         <NetworkStatus v-if="isInterviewActive" />
+        <span class="invite-link" @click="router.push('/messages')">留言板</span>
         <span v-if="authStore.isAdmin" class="invite-link" @click="openInviteDialog">邀请码</span>
         <el-dropdown trigger="click" v-if="authStore.isLoggedIn">
           <span class="user-info">

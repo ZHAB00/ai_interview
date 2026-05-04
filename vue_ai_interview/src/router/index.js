@@ -33,6 +33,11 @@ const routes = [
     meta: { requiresAuth: true }
   },
   {
+    path: '/messages',
+    name: 'Messages',
+    component: () => import('../views/MessagePage.vue'),
+  },
+  {
     path: '/report/:interviewId',
     name: 'Report',
     component: () => import('../views/ReportPage.vue'),
