@@ -1,13 +1,17 @@
-"""Interview management endpoints: create, history, report."""
+"""Interview management endpoints: create, history, report, reconnect, delete, favorite."""
 
+import json
 import logging
+from datetime import datetime, timezone, timedelta
+from pathlib import Path
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_db
-from app.core.exceptions import NotFoundException
+from app.core.config import settings
+from app.core.exceptions import ConflictException, NotFoundException, ValidationErrorException
 from app.models.interview import Interview
 from app.models.report import Report
 from app.models.resume import Resume
@@ -24,6 +28,17 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/interviews", tags=["面试"])
 
 
+def _cleanup_stale_interview(interview: Interview) -> bool:
+    """If interview exceeded max duration, mark completed. Returns True if cleaned."""
+    if interview.status == "in_progress" and interview.started_at:
+        elapsed = (datetime.now(timezone.utc) - interview.started_at).total_seconds()
+        if elapsed >= settings.INTERVIEW_MAX_DURATION:
+            interview.status = "completed"
+            interview.ended_at = datetime.now(timezone.utc)
+            return True
+    return False
+
+
 @router.post("", response_model=CreateInterviewResponse, status_code=201)
 async def create_interview(
     req: CreateInterviewRequest,
@@ -31,7 +46,6 @@ async def create_interview(
     db: AsyncSession = Depends(get_db),
 ):
     """创建面试并返回 WebSocket 凭证。"""
-    # Resolve resume: if not provided (quick start), create a placeholder
     if req.resume_id is not None:
         result = await db.execute(
             select(Resume).where(Resume.id == req.resume_id, Resume.user_id == current_user.id)
@@ -41,7 +55,6 @@ async def create_interview(
             raise NotFoundException("简历不存在")
         resume_id = resume.id
     else:
-        # Quick start — create a minimal placeholder resume
         placeholder = Resume(
             user_id=current_user.id,
             file_path="",
@@ -59,12 +72,25 @@ async def create_interview(
         resume_id = placeholder.id
         logger.info(f"快速体验模式，已创建占位简历: resume_id={resume_id}")
 
-    # Validate mode/stage
     if req.mode == "stage" and not req.selected_stages:
-        from app.core.exceptions import ValidationErrorException
         raise ValidationErrorException("阶段练习模式需提供 selected_stages")
 
-    # Create interview record
+    # Clear previous in_progress interviews for this user
+    stale_result = await db.execute(
+        select(Interview).where(
+            Interview.user_id == current_user.id,
+            Interview.status == "in_progress",
+        )
+    )
+    stale_interviews = stale_result.scalars().all()
+    for stale in stale_interviews:
+        if _cleanup_stale_interview(stale):
+            logger.info(f"清理超时面试: interview_id={stale.id}")
+        else:
+            stale.status = "abandoned"
+            stale.ended_at = datetime.now(timezone.utc)
+            logger.info(f"放弃旧面试: interview_id={stale.id}")
+
     interview = Interview(
         user_id=current_user.id,
         resume_id=resume_id,
@@ -78,13 +104,11 @@ async def create_interview(
     await db.commit()
     await db.refresh(interview)
 
-    # Generate ws_token as a self-contained JWT (validates without Redis)
     from app.core.security import create_access_token
     ws_token = create_access_token(
         {"sub": str(current_user.id), "interview_id": interview.id, "type": "ws"},
-        expires_delta=15,  # 15-minute window to start the interview
+        expires_delta=15,
     )
-    # Also store in Redis for session management (non-critical)
     try:
         from app.ws.session_manager import session_manager
         await session_manager.store_token(ws_token, interview.id, ttl=900)
@@ -92,7 +116,6 @@ async def create_interview(
         logger.warning(f"Redis token存储失败，将继续: {e}")
 
     logger.info(f"面试创建成功: interview_id={interview.id}, user_id={current_user.id}")
-
     return CreateInterviewResponse(
         interview_id=interview.id,
         ws_token=ws_token,
@@ -101,27 +124,99 @@ async def create_interview(
     )
 
 
-@router.get("/history", response_model=InterviewHistoryResponse)
-async def get_history(
-    page: int = 1,
-    page_size: int = 20,
+@router.get("/active")
+async def get_active_interview(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """获取当前用户的面试历史记录。"""
-    page_size = min(page_size, 100)
+    """获取当前进行中的面试（用于断线恢复）。自动清理超时面试。"""
+    result = await db.execute(
+        select(Interview).where(
+            Interview.user_id == current_user.id,
+            Interview.status == "in_progress",
+        )
+    )
+    interview = result.scalars().all()
 
-    # Total count
+    active = None
+    for iv in interview:
+        if _cleanup_stale_interview(iv):
+            await db.commit()
+        else:
+            active = iv
+
+    if not active:
+        return {"active": False, "interview_id": None}
+
+    return {
+        "active": True,
+        "interview_id": active.id,
+        "position": active.position,
+        "stage": active.current_stage,
+        "mode": active.mode,
+    }
+
+
+@router.post("/{interview_id}/reconnect")
+async def reconnect_interview(
+    interview_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取新的 ws_token 用于断线重连。"""
+    result = await db.execute(
+        select(Interview).where(
+            Interview.id == interview_id,
+            Interview.user_id == current_user.id,
+            Interview.status == "in_progress",
+        )
+    )
+    interview = result.scalar_one_or_none()
+    if not interview:
+        raise NotFoundException("面试不存在或已结束")
+
+    if _cleanup_stale_interview(interview):
+        await db.commit()
+        raise NotFoundException("面试已超时")
+
+    from app.core.security import create_access_token
+    ws_token = create_access_token(
+        {"sub": str(current_user.id), "interview_id": interview.id, "type": "ws"},
+        expires_delta=15,
+    )
+    try:
+        from app.ws.session_manager import session_manager
+        await session_manager.store_token(ws_token, interview.id, ttl=900)
+    except Exception as e:
+        logger.warning(f"Redis token存储失败: {e}")
+
+    return {
+        "interview_id": interview.id,
+        "ws_token": ws_token,
+        "ws_url": f"/ws/interview/{interview.id}",
+        "expires_in": 900,
+    }
+
+
+@router.get("/history", response_model=InterviewHistoryResponse)
+async def get_history(
+    page: int = 1,
+    page_size: int = 8,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取当前用户的面试历史记录（分页）。favorited 优先显示。"""
+    page_size = min(page_size, 20)
+
     count_result = await db.execute(
         select(func.count()).select_from(Interview).where(Interview.user_id == current_user.id)
     )
     total = count_result.scalar() or 0
 
-    # Items
     result = await db.execute(
         select(Interview)
         .where(Interview.user_id == current_user.id)
-        .order_by(Interview.created_at.desc())
+        .order_by(Interview.is_favorited.desc(), Interview.created_at.desc())
         .offset((page - 1) * page_size)
         .limit(page_size)
     )
@@ -136,12 +231,96 @@ async def get_history(
             status=iv.status,
             overall_score=iv.overall_score,
             passed=bool(iv.passed) if iv.passed is not None else None,
+            is_favorited=bool(iv.is_favorited),
             created_at=iv.created_at,
         )
         for iv in interviews
     ]
 
     return InterviewHistoryResponse(items=items, total=total, page=page, page_size=page_size)
+
+
+@router.put("/{interview_id}/favorite")
+async def toggle_favorite(
+    interview_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """收藏/取消收藏面试。最多收藏 5 个。"""
+    result = await db.execute(
+        select(Interview).where(
+            Interview.id == interview_id,
+            Interview.user_id == current_user.id,
+        )
+    )
+    interview = result.scalar_one_or_none()
+    if not interview:
+        raise NotFoundException("面试不存在")
+
+    if interview.is_favorited:
+        interview.is_favorited = False
+        await db.commit()
+        return {"favorited": False, "message": "已取消收藏"}
+    else:
+        # Check limit
+        fav_count = await db.execute(
+            select(func.count()).select_from(Interview).where(
+                Interview.user_id == current_user.id,
+                Interview.is_favorited == 1,
+            )
+        )
+        if (fav_count.scalar() or 0) >= 5:
+            raise ConflictException("最多收藏 5 个面试")
+        interview.is_favorited = True
+        await db.commit()
+        return {"favorited": True, "message": "已收藏"}
+
+
+@router.delete("/{interview_id}", status_code=200)
+async def delete_interview(
+    interview_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """硬删除面试（含报告和录音文件）。收藏的面试不可删除。"""
+    result = await db.execute(
+        select(Interview).where(
+            Interview.id == interview_id,
+            Interview.user_id == current_user.id,
+        )
+    )
+    interview = result.scalar_one_or_none()
+    if not interview:
+        raise NotFoundException("面试不存在")
+
+    if interview.is_favorited:
+        raise ConflictException("收藏的面试不可删除，请先取消收藏")
+
+    # Delete audio files
+    if interview.answers:
+        try:
+            answers = json.loads(interview.answers) if isinstance(interview.answers, str) else interview.answers
+            for ans in answers:
+                audio_url = ans.get("user_audio_url", "")
+                if audio_url and audio_url.startswith("/uploads/audio/"):
+                    filename = audio_url.split("/")[-1].split("?")[0]
+                    audio_path = Path(settings.UPLOAD_DIR) / "audio" / filename
+                    if audio_path.exists():
+                        audio_path.unlink()
+        except Exception as e:
+            logger.warning(f"删除音频文件失败: {e}")
+
+    # Delete report
+    result = await db.execute(select(Report).where(Report.interview_id == interview_id))
+    report = result.scalar_one_or_none()
+    if report:
+        await db.delete(report)
+
+    # Delete interview
+    await db.delete(interview)
+    await db.commit()
+    logger.info(f"面试已删除: interview_id={interview_id}")
+    return {"message": "面试已删除"}
 
 
 @router.get("/{interview_id}/report", response_model=ReportStatusResponse)
@@ -151,7 +330,6 @@ async def get_report(
     db: AsyncSession = Depends(get_db),
 ):
     """获取面试报告。面试结束后调用。"""
-    # Verify interview ownership
     result = await db.execute(
         select(Interview).where(
             Interview.id == interview_id, Interview.user_id == current_user.id
@@ -161,7 +339,6 @@ async def get_report(
     if not interview:
         raise NotFoundException("面试不存在")
 
-    # Get report
     result = await db.execute(
         select(Report).where(Report.interview_id == interview_id)
     )

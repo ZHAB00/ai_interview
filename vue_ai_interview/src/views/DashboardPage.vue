@@ -3,7 +3,9 @@ import { reactive, ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { uploadResume } from '../services/resumeService.js'
-import { createInterview, getInterviewHistory } from '../services/interviewService.js'
+import { createInterview, getInterviewHistory, getActiveInterview, toggleFavorite, deleteInterview as delIv } from '../services/interviewService.js'
+import * as interviewService from '../services/interviewService.js'
+import { ElMessageBox } from 'element-plus'
 import { STAGES, INTERVIEW_MODE } from '../utils/constants.js'
 import GuideCard from '../components/GuideCard.vue'
 import { steps } from '../components/GuideCard.vue'
@@ -223,15 +225,54 @@ function handleQuickStart() {
 }
 
 // --- Load History ---
-async function loadHistory() {
+const historyPage = ref(1)
+const historyTotal = ref(0)
+const pageSize = 8
+
+async function loadHistory(page = 1) {
   historyLoading.value = true
+  historyPage.value = page
   try {
-    const { data } = await getInterviewHistory(1, 5)
+    const { data } = await getInterviewHistory(page, pageSize)
     history.value = data.items || []
+    historyTotal.value = data.total
   } catch {
     history.value = []
   } finally {
     historyLoading.value = false
+  }
+}
+
+async function toggleFav(iv) {
+  try {
+    const { data } = await interviewService.toggleFavorite(iv.interview_id)
+    iv.is_favorited = data.favorited
+    ElMessage.success(data.message)
+    loadHistory(historyPage.value)
+  } catch (e) {
+    ElMessage.error(e.response?.data?.error?.message || '操作失败')
+  }
+}
+
+async function deleteInterviewItem(iv) {
+  try {
+    await ElMessageBox.confirm('确定删除这条面试记录？报告和录音也将永久删除。', '警告', { type: 'warning', confirmButtonText: '删除' })
+    await interviewService.deleteInterview(iv.interview_id)
+    ElMessage.success('已删除')
+    loadHistory(historyPage.value)
+  } catch { /* cancelled */ }
+}
+
+async function continueInterview() {
+  try {
+    const { data } = await getActiveInterview()
+    if (data.active) {
+      router.push(`/interview/${data.interview_id}`)
+    } else {
+      ElMessage.info('暂无进行中的面试')
+    }
+  } catch {
+    ElMessage.error('获取面试状态失败')
   }
 }
 
@@ -254,7 +295,19 @@ const statusConfig = (status) => {
   return map[status] || map.created
 }
 
+const activeInterviewId = ref(null)
+
+async function checkActiveInterview() {
+  try {
+    const { data } = await getActiveInterview()
+    if (data.active) {
+      activeInterviewId.value = data.interview_id
+    }
+  } catch { /* ignore */ }
+}
+
 onMounted(() => {
+  checkActiveInterview()
   loadHistory()
 })
 
@@ -435,7 +488,7 @@ const guideSteps = steps
         </section>
       </template>
 
-      <!-- Active Interview Banner (always visible) -->
+      <!-- Active Interview Banner -->
       <section class="card active-banner" v-if="activeInterviewId" @click="continueInterview">
         <div class="banner-content">
           <span class="banner-dot" />
@@ -450,62 +503,32 @@ const guideSteps = steps
           <h3>面试记录</h3>
           <span class="section-hint" v-if="historyTotal">共 {{ historyTotal }} 条，收藏 {{ history.filter(h => h.is_favorited).length }}/5</span>
         </div>
-
-        <!-- Favorites -->
-        <template v-if="history.some(h => h.is_favorited)">
-          <div class="fav-header">我的收藏</div>
-          <div class="history-cards">
-            <div
-              v-for="row in history.filter(h => h.is_favorited)"
-              :key="'fav-' + row.interview_id"
-              class="history-card favorited"
-            >
-              <div class="hc-top">
-                <span class="hc-star">★</span>
-                <span class="hc-position">{{ row.position }}</span>
-                <el-tag :type="statusConfig(row.status).type" size="small">{{ statusConfig(row.status).text }}</el-tag>
-              </div>
-              <div class="hc-mid">
-                <span>{{ row.difficulty }} / {{ row.mode === 'full' ? '全流程' : '阶段' }}</span>
-                <span v-if="row.overall_score != null" class="hc-score" :class="{ pass: row.passed, fail: !row.passed }">{{ row.overall_score }}分</span>
-                <span class="hc-time">{{ formatTime(row.created_at) }}</span>
-              </div>
-              <div class="hc-actions">
-                <el-button v-if="row.status === 'completed'" size="small" @click="viewReport(row.interview_id)">查看报告</el-button>
-                <el-button size="small" @click="toggleFav(row)">取消收藏</el-button>
-                <el-button size="small" type="danger" @click="deleteInterviewItem(row)">删除</el-button>
-              </div>
-            </div>
-          </div>
-        </template>
-
-        <!-- Others -->
-        <template v-if="history.some(h => !h.is_favorited)">
-          <div class="fav-header" v-if="history.some(h => h.is_favorited)">其他记录</div>
-          <div class="history-cards">
-            <div
-              v-for="row in history.filter(h => !h.is_favorited)"
-              :key="row.interview_id"
-              class="history-card"
-            >
-              <div class="hc-top">
-                <span class="hc-position">{{ row.position }}</span>
-                <el-tag :type="statusConfig(row.status).type" size="small">{{ statusConfig(row.status).text }}</el-tag>
-              </div>
-              <div class="hc-mid">
-                <span>{{ row.difficulty }} / {{ row.mode === 'full' ? '全流程' : '阶段' }}</span>
-                <span v-if="row.overall_score != null" class="hc-score" :class="{ pass: row.passed, fail: !row.passed }">{{ row.overall_score }}分</span>
-                <span class="hc-time">{{ formatTime(row.created_at) }}</span>
-              </div>
-              <div class="hc-actions">
-                <el-button v-if="row.status === 'completed'" size="small" @click="viewReport(row.interview_id)">查看报告</el-button>
-                <el-button size="small" @click="toggleFav(row)">收藏</el-button>
-                <el-button size="small" type="danger" @click="deleteInterviewItem(row)">删除</el-button>
-              </div>
-            </div>
-          </div>
-        </template>
-
+        <div class="history-table-wrap">
+          <el-table :data="history" v-loading="historyLoading" style="width: 100%" :show-header="false">
+            <el-table-column min-width="140">
+              <template #default="{ row }">
+                <div class="history-row">
+                  <div class="history-main">
+                    <span class="history-position">{{ row.position }}</span>
+                    <span class="history-meta">{{ row.difficulty }} / {{ row.mode === 'full' ? '全流程' : '阶段' }}</span>
+                    <el-tag :type="statusConfig(row.status).type" size="small" class="history-status-tag">
+                      {{ statusConfig(row.status).text }}
+                    </el-tag>
+                    <span v-if="row.overall_score != null" class="history-score" :class="{ pass: row.passed, fail: !row.passed }">{{ row.overall_score }}</span>
+                  </div>
+                  <div class="history-actions">
+                    <span class="history-time">{{ formatTime(row.created_at) }}</span>
+                    <el-button v-if="row.status === 'completed'" text size="small" type="primary" @click="viewReport(row.interview_id)">报告</el-button>
+                    <el-button text size="small" @click="toggleFav(row)" :type="row.is_favorited ? 'warning' : ''">
+                      {{ row.is_favorited ? '★' : '☆' }}
+                    </el-button>
+                    <el-button text size="small" type="danger" @click="deleteInterviewItem(row)">删除</el-button>
+                  </div>
+                </div>
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
         <div class="history-pagination" v-if="historyTotal > pageSize">
           <el-pagination
             layout="prev, pager, next"
@@ -516,39 +539,6 @@ const guideSteps = steps
             small
           />
         </div>
-        <el-table :data="history" v-loading="historyLoading" style="width: 100%" :show-header="false">
-          <el-table-column label="岗位" min-width="160">
-            <template #default="{ row }">
-              <span class="history-position">{{ row.position }}</span>
-              <span class="history-meta">{{ row.difficulty }} / {{ row.mode === 'full' ? '全流程' : '阶段' }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="状态" width="100" align="center">
-            <template #default="{ row }">
-              <el-tag :type="statusConfig(row.status).type" size="small">
-                {{ statusConfig(row.status).text }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column label="时间" width="170" align="right">
-            <template #default="{ row }">
-              <span class="history-time">{{ formatTime(row.created_at) }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="操作" width="90" align="center">
-            <template #default="{ row }">
-              <el-button
-                v-if="row.status === 'completed'"
-                text
-                type="primary"
-                size="small"
-                @click="viewReport(row.interview_id)"
-              >
-                查看报告
-              </el-button>
-            </template>
-          </el-table-column>
-        </el-table>
         <el-empty v-if="!historyLoading && !history.length" description="暂无面试记录" :image-size="60" />
       </section>
     </div>
@@ -712,6 +702,20 @@ const guideSteps = steps
   width: 8px; height: 8px; border-radius: 50%;
   background: #67C23A; flex-shrink: 0; animation: blink 1.5s step-end infinite;
 }
+
+/* History */
+.history-section .section-header .section-hint { font-size: 12px; color: var(--color-text-secondary); }
+.history-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.history-main { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex: 1; min-width: 0; }
+.history-position { font-size: 13px; color: var(--color-text); font-weight: 500; }
+.history-meta { font-size: 11px; color: var(--color-text-secondary); }
+.history-status-tag { flex-shrink: 0; }
+.history-score { font-size: 13px; font-weight: 600; }
+.history-score.pass { color: var(--color-success); }
+.history-score.fail { color: var(--color-error); }
+.history-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.history-time { font-size: 11px; color: var(--color-text-secondary); }
+.history-pagination { display: flex; justify-content: center; margin-top: 12px; }
 
 /* History — Card layout */
 .fav-header {

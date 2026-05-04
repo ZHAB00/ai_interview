@@ -1,13 +1,13 @@
 <script setup>
-import { computed, ref, onUnmounted } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { useAuthStore } from '../stores/authStore.js'
 import { useInterviewStore } from '../stores/interviewStore.js'
 import NetworkStatus from './NetworkStatus.vue'
 import { ETHICS_STATEMENT } from '../utils/constants.js'
 import api from '../services/api.js'
-import { getActiveInterview, getInterviewHistory } from '../services/interviewService.js'
+import { getActiveInterview } from '../services/interviewService.js'
 
 const router = useRouter()
 const route = useRoute()
@@ -31,7 +31,6 @@ async function checkActive() {
 }
 onMounted(checkActive)
 
-const adminTabSub = ref('questions')
 const tabs = computed(() => {
   const items = [
     { key: 'dashboard', label: '首页', icon: 'HomeFilled', path: '/dashboard' },
@@ -52,7 +51,7 @@ const activeTab = computed(() => {
   return 'dashboard'
 })
 
-async function goTab(tab) {
+function goTab(tab) {
   // Interview tab while in interview: stay there
   if (tab.key === 'interview' && isInterviewActive.value) return
 
@@ -74,18 +73,9 @@ async function goTab(tab) {
     return
   }
 
-  // Report tab — show history list
+  // Report tab
   if (tab.key === 'report') {
-    router.push('/dashboard?view=history')
-    return
-  }
-
-  // Admin tab — toggle between questions and documents
-  if (tab.key === 'admin') {
-    if (activeTab.value === 'admin') {
-      adminTabSub.value = adminTabSub.value === 'questions' ? 'documents' : 'questions'
-    }
-    router.push(adminTabSub.value === 'questions' ? '/admin/questions' : '/admin/documents')
+    router.push(tab.path)
     return
   }
 
@@ -193,8 +183,8 @@ function handleLogout() {
       {{ ETHICS_STATEMENT }}
     </footer>
 
-    <!-- Bottom Tab Bar (mobile only) -->
-    <nav class="bottom-tabs">
+    <!-- Bottom Tab Bar (mobile only, hidden during interview) -->
+    <nav v-if="!isInterviewActive" class="bottom-tabs">
       <div
         v-for="tab in tabs"
         :key="tab.key"

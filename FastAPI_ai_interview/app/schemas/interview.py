@@ -29,6 +29,7 @@ class InterviewHistoryItem(BaseModel):
     status: str
     overall_score: int | None = None
     passed: bool | None = None
+    is_favorited: bool = False
     created_at: datetime
 
 
