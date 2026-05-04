@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import { useTheme } from '../composables/useTheme.js'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useAuthStore } from '../stores/authStore.js'
 import { useInterviewStore } from '../stores/interviewStore.js'
@@ -13,6 +14,12 @@ const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
 const interviewStore = useInterviewStore()
+const { theme: currentTheme, setTheme } = useTheme()
+
+const themeLabel = computed(() => {
+  const m = { light: '浅色', dark: '深色', warm: '暖色' }
+  return m[currentTheme.value] || '浅色'
+})
 
 const isInterviewActive = computed(() =>
   interviewStore.status === 'in_progress'
@@ -168,6 +175,10 @@ function handleLogout() {
               <el-dropdown-item @click="router.push('/dashboard')">首页</el-dropdown-item>
               <el-dropdown-item v-if="authStore.isAdmin" @click="router.push('/admin/questions')">题库管理</el-dropdown-item>
               <el-dropdown-item v-if="authStore.isAdmin" @click="router.push('/admin/documents')">文档管理</el-dropdown-item>
+              <el-dropdown-item divided disabled>主题：{{ themeLabel }}</el-dropdown-item>
+              <el-dropdown-item @click="setTheme('light')" :class="{ 'theme-active': currentTheme === 'light' }">☀️ 浅色</el-dropdown-item>
+              <el-dropdown-item @click="setTheme('dark')" :class="{ 'theme-active': currentTheme === 'dark' }">🌙 深色</el-dropdown-item>
+              <el-dropdown-item @click="setTheme('warm')" :class="{ 'theme-active': currentTheme === 'warm' }">🔥 暖色</el-dropdown-item>
               <el-dropdown-item divided @click="handleLogout">退出登录</el-dropdown-item>
             </el-dropdown-menu>
           </template>
