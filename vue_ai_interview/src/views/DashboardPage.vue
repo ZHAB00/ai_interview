@@ -296,12 +296,30 @@ const statusConfig = (status) => {
 }
 
 const activeInterviewId = ref(null)
+const activeRemaining = ref(0)
+let activeTimer = null
+
+function formatRemaining(seconds) {
+  const m = Math.floor(seconds / 60)
+  const s = seconds % 60
+  return `${m}分${s.toString().padStart(2, '0')}秒`
+}
 
 async function checkActiveInterview() {
   try {
     const { data } = await getActiveInterview()
     if (data.active) {
       activeInterviewId.value = data.interview_id
+      activeRemaining.value = data.remaining_seconds || 0
+      clearInterval(activeTimer)
+      activeTimer = setInterval(() => {
+        if (activeRemaining.value > 0) {
+          activeRemaining.value--
+        } else {
+          activeInterviewId.value = null
+          clearInterval(activeTimer)
+        }
+      }, 1000)
     }
   } catch { /* ignore */ }
 }
@@ -309,6 +327,10 @@ async function checkActiveInterview() {
 onMounted(() => {
   checkActiveInterview()
   loadHistory()
+})
+
+onUnmounted(() => {
+  clearInterval(activeTimer)
 })
 
 // Expose steps for GuideCard template
@@ -492,7 +514,7 @@ const guideSteps = steps
       <section class="card active-banner" v-if="activeInterviewId" @click="continueInterview">
         <div class="banner-content">
           <span class="banner-dot" />
-          <span>您有一个进行中的面试</span>
+          <span>进行中的面试 — 剩余 {{ formatRemaining(activeRemaining) }}</span>
           <el-button type="primary" size="small" plain>继续面试</el-button>
         </div>
       </section>
@@ -536,7 +558,7 @@ const guideSteps = steps
             :page-size="pageSize"
             :current-page="historyPage"
             @current-change="loadHistory"
-            small
+            size="small"
           />
         </div>
         <el-empty v-if="!historyLoading && !history.length" description="暂无面试记录" :image-size="60" />

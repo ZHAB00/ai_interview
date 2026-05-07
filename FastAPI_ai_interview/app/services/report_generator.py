@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.report_agent import ReportAgent
@@ -53,7 +54,7 @@ class ReportGenerator:
                 logger.warning(f"Failed to parse answers JSON for interview {interview_id}")
 
         # Aggregate dimension scores
-        text_answers = [a for a in answers if not a.get("type")]  # exclude coding entries
+        text_answers = [a for a in answers if not a.get("type") and not a.get("pending_question")]  # exclude coding + pending
         aggregation = ScoringService.aggregate_dimensions(text_answers)
 
         # Generate narrative report via ReportAgent.
@@ -103,23 +104,35 @@ class ReportGenerator:
             "generated_at": datetime.now(timezone.utc).isoformat(),
         }
 
-        # Upsert report
-        result = await self.db.execute(
-            select(Report).where(Report.interview_id == interview_id)
-        )
-        report = result.scalar_one_or_none()
+        # Upsert report (with retry for concurrent race)
+        try:
+            result = await self.db.execute(
+                select(Report).where(Report.interview_id == interview_id)
+            )
+            report = result.scalar_one_or_none()
 
-        if report:
+            if report:
+                report.report_data = report_data
+                report.status = "completed"
+                report.updated_at = datetime.now(timezone.utc)
+            else:
+                report = Report(
+                    interview_id=interview_id,
+                    report_data=report_data,
+                    status="completed",
+                )
+                self.db.add(report)
+                await self.db.flush()
+        except IntegrityError:
+            await self.db.rollback()
+            # Another task already inserted — load and update
+            result = await self.db.execute(
+                select(Report).where(Report.interview_id == interview_id)
+            )
+            report = result.scalar_one()
             report.report_data = report_data
             report.status = "completed"
             report.updated_at = datetime.now(timezone.utc)
-        else:
-            report = Report(
-                interview_id=interview_id,
-                report_data=report_data,
-                status="completed",
-            )
-            self.db.add(report)
 
         # Update interview scores
         interview.overall_score = final_score
@@ -167,7 +180,7 @@ class ReportGenerator:
                         "errors": a.get("errors", []),
                     }
                     for a in stage_answers
-                    if not a.get("type")  # skip coding entries
+                    if not a.get("type") and not a.get("pending_question")  # skip coding + pending
                 ],
             })
 

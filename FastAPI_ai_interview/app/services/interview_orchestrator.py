@@ -98,6 +98,22 @@ class InterviewOrchestrator:
         self.stage_summaries: list[dict] = []
         self.pending_coding_question: dict | None = None
 
+    def _add_pending_question(self):
+        """Save current_question to conversation so reconnection can restore it."""
+        if self.current_question:
+            self.conversation.append({
+                "question_text": self.current_question.get("text", ""),
+                "user_answer_text": "",
+                "stage": self.current_stage(),
+                "score": 0,
+                "dimensions_scores": {},
+                "pending_question": True,
+            })
+
+    def _remove_pending_questions(self):
+        """Remove unanswered pending entries before adding a scored answer."""
+        self.conversation = [e for e in self.conversation if not e.get("pending_question")]
+
     # ===== Public API =====
 
     async def start(self) -> dict:
@@ -117,6 +133,7 @@ class InterviewOrchestrator:
                 "interview_id": self.interview.id,
                 "stage": self.interview.current_stage,
                 "message": f"欢迎参加{self.interview.position}的模拟面试，共{len(self.stages)}个阶段，现在开始吧！",
+                "remaining_seconds": settings.INTERVIEW_MAX_DURATION,
             },
         }
 
@@ -180,6 +197,7 @@ class InterviewOrchestrator:
         )
 
         # Build structured answer record
+        self._remove_pending_questions()
         answer_record = ScoringService.build_answer_record(
             question_id=question_id,
             question_text=question_text,
@@ -241,6 +259,7 @@ class InterviewOrchestrator:
                 "text": question_text or follow_up or "请再详细说明一下？",
                 "is_follow_up": True,
             }
+            self._add_pending_question()
             # Avoid duplicate: only prepend follow_up if question_text
             # is not already contained within it (LLM often embeds both)
             display_text = question_text or follow_up or "请再详细说明一下？"
@@ -277,6 +296,7 @@ class InterviewOrchestrator:
 
             self.follow_up_count = 0  # reset for new main question
             self.current_question = {"text": next_q, "is_follow_up": False}
+            self._add_pending_question()
             msg = evaluation.get("message", "")
             # Avoid duplicate: if message already contains the question, just show question
             display_text = next_q
@@ -356,15 +376,15 @@ class InterviewOrchestrator:
         await self.db.commit()
 
         return await self._build_end_message("completed")
-        return end_msg
 
     # ===== Helpers =====
 
     async def check_timeout(self) -> dict | None:
-        """Check if interview has exceeded max duration. Returns end message or None."""
+        """Check if interview has exceeded max duration. Returns end message or warning."""
         if not self.interview.started_at:
             return None
-        elapsed = (datetime.now(timezone.utc) - self.interview.started_at).total_seconds()
+        started = self.interview.started_at.replace(tzinfo=timezone.utc)
+        elapsed = (datetime.now(timezone.utc) - started).total_seconds()
         if elapsed > settings.INTERVIEW_MAX_DURATION:
             logger.warning(f"面试超时: interview_id={self.interview.id}, elapsed={elapsed}s")
             self.state = OrchestratorState.ENDED
@@ -372,6 +392,17 @@ class InterviewOrchestrator:
             self.interview.ended_at = datetime.now(timezone.utc)
             await self.db.commit()
             return await self._build_end_message("completed")
+        # 3-minute warning
+        remaining = settings.INTERVIEW_MAX_DURATION - elapsed
+        if 0 < remaining <= 180 and not getattr(self, '_timeout_warned', False):
+            self._timeout_warned = True
+            return {
+                "type": "ai/text",
+                "data": {
+                    "text": f"⏰ 面试时间还剩 {int(remaining // 60)} 分钟，当前问题回答完后将自动结束。",
+                    "is_final": True,
+                },
+            }
         return None
 
     async def _generate_report_bg(self, interview_id: int):
@@ -425,6 +456,7 @@ class InterviewOrchestrator:
                 "is_follow_up": False,
                 "scoring_points": None,
             }
+            self._add_pending_question()
         return result
 
     async def _next_stage_message(self) -> dict:

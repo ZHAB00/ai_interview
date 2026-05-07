@@ -61,7 +61,8 @@ class SessionManager:
             "status": state.get("status", "in_progress"),
         }
         if self.redis:
-            await self.redis.hset(self._key(interview_id), mapping=data)
+            for k, v in data.items():
+                await self.redis.hset(self._key(interview_id), k, v)
             await self.redis.expire(self._key(interview_id), SESSION_TTL)
         logger.info(f"会话创建: interview_id={interview_id}")
 
@@ -70,7 +71,8 @@ class SessionManager:
         await self._ensure_connection()
         updates["last_active"] = datetime.now(timezone.utc).isoformat()
         if self.redis:
-            await self.redis.hset(self._key(interview_id), mapping=updates)
+            for k, v in updates.items():
+                await self.redis.hset(self._key(interview_id), k, v)
             await self.redis.expire(self._key(interview_id), SESSION_TTL)
 
     async def get_session(self, interview_id: int) -> dict[str, Any] | None:

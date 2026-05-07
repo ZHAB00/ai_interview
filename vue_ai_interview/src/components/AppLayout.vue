@@ -60,20 +60,13 @@ const activeTab = computed(() => {
   return 'dashboard'
 })
 
-function goTab(tab) {
-  // Interview tab while in interview: stay there
-  if (tab.key === 'interview' && isInterviewActive.value) return
+const isOnInterviewPage = computed(() => route.path.startsWith('/interview'))
 
-  // Leaving interview: confirm
-  if (isInterviewActive.value && (tab.key === 'dashboard' || tab.key === 'report' || tab.key === 'admin')) {
-    ElMessageBox.confirm('正在面试中，确定离开吗？', '提示', { confirmButtonText: '离开', cancelButtonText: '继续面试', type: 'warning' })
-      .then(() => router.push(tab.path))
-      .catch(() => {})
-    return
-  }
-
-  // Interview tab without active interview
-  if (tab.key === 'interview' && !isInterviewActive.value) {
+async function goTab(tab) {
+  // Interview tab: go back to active interview
+  if (tab.key === 'interview') {
+    if (isOnInterviewPage.value) return // already there
+    await checkActive()  // refresh — may have changed since mount
     if (hasActiveInterview.value) {
       router.push(`/interview/${activeInterviewId.value}`)
       return
@@ -82,7 +75,15 @@ function goTab(tab) {
     return
   }
 
-  // Report tab
+  // Leaving interview page: confirm before navigating away
+  if (isOnInterviewPage.value && isInterviewActive.value) {
+    ElMessageBox.confirm('正在面试中，确定离开吗？', '提示', { confirmButtonText: '离开', cancelButtonText: '继续面试', type: 'warning' })
+      .then(() => router.push(tab.path))
+      .catch(() => {})
+    return
+  }
+
+  // Report tab — show history list
   if (tab.key === 'report') {
     router.push('/dashboard?view=history')
     return
@@ -107,6 +108,7 @@ function goTab(tab) {
 }
 
 // --- Invite Code ---
+const adminTabSub = ref('questions')
 const inviteDialog = ref(false)
 const inviteCode = ref('')
 const countdown = ref('')
@@ -181,8 +183,18 @@ function handleLogout() {
       </div>
       <div class="header-right">
         <NetworkStatus v-if="isInterviewActive" />
-        <span class="invite-link" @click="router.push('/messages')">留言板</span>
+        <span class="invite-link desktop-only" @click="router.push('/messages')">留言板</span>
         <span v-if="authStore.isAdmin" class="invite-link" @click="openInviteDialog">邀请码</span>
+        <el-dropdown trigger="click" v-if="authStore.isLoggedIn">
+          <el-icon class="theme-btn" :size="20"><Brush /></el-icon>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item @click="setTheme('light')" :class="{ 'theme-active': currentTheme === 'light' }">☀️ 浅色</el-dropdown-item>
+              <el-dropdown-item @click="setTheme('dark')" :class="{ 'theme-active': currentTheme === 'dark' }">🌙 深色</el-dropdown-item>
+              <el-dropdown-item @click="setTheme('warm')" :class="{ 'theme-active': currentTheme === 'warm' }">🔥 暖色</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
         <el-dropdown trigger="click" v-if="authStore.isLoggedIn">
           <span class="user-info">
             {{ authStore.username || '用户' }}
@@ -193,10 +205,6 @@ function handleLogout() {
               <el-dropdown-item @click="router.push('/dashboard')">首页</el-dropdown-item>
               <el-dropdown-item v-if="authStore.isAdmin" @click="router.push('/admin/questions')">题库管理</el-dropdown-item>
               <el-dropdown-item v-if="authStore.isAdmin" @click="router.push('/admin/documents')">文档管理</el-dropdown-item>
-              <el-dropdown-item divided disabled>主题：{{ themeLabel }}</el-dropdown-item>
-              <el-dropdown-item @click="setTheme('light')" :class="{ 'theme-active': currentTheme === 'light' }">☀️ 浅色</el-dropdown-item>
-              <el-dropdown-item @click="setTheme('dark')" :class="{ 'theme-active': currentTheme === 'dark' }">🌙 深色</el-dropdown-item>
-              <el-dropdown-item @click="setTheme('warm')" :class="{ 'theme-active': currentTheme === 'warm' }">🔥 暖色</el-dropdown-item>
               <el-dropdown-item divided @click="handleLogout">退出登录</el-dropdown-item>
             </el-dropdown-menu>
           </template>
@@ -212,8 +220,8 @@ function handleLogout() {
       {{ ETHICS_STATEMENT }}
     </footer>
 
-    <!-- Bottom Tab Bar (mobile only, hidden during interview) -->
-    <nav v-if="!isInterviewActive" class="bottom-tabs">
+    <!-- Bottom Tab Bar (mobile only) -->
+    <nav class="bottom-tabs">
       <div
         v-for="tab in tabs"
         :key="tab.key"
@@ -289,6 +297,15 @@ function handleLogout() {
   gap: 16px;
 }
 
+.theme-btn {
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  transition: color 0.2s;
+}
+.theme-btn:hover {
+  color: var(--color-accent);
+}
+
 .user-info {
   display: flex;
   align-items: center;
@@ -356,6 +373,10 @@ function handleLogout() {
 
   .header-right {
     gap: 8px;
+  }
+
+  .desktop-only {
+    display: none !important;
   }
 
   .app-footer {

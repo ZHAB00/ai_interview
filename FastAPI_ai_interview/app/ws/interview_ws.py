@@ -19,7 +19,7 @@ from app.core.database import SessionLocal
 from app.core.security import decode_token
 from app.models.interview import Interview
 from app.models.user import User
-from app.services.interview_orchestrator import InterviewOrchestrator
+from app.services.interview_orchestrator import InterviewOrchestrator, OrchestratorState
 from app.ws.audio_handler import AudioHandler
 from app.ws.session_manager import session_manager
 
@@ -103,14 +103,75 @@ async def interview_handler(websocket: WebSocket, interview_id: int, token: str)
         tts_player = asyncio.create_task(_tts_player(websocket, tts_queue, is_speaking))
         silence_task: asyncio.Task | None = None
 
-        # ===== Start Interview =====
-        start_msg = await orchestrator.start()
-        await websocket.send_json(start_msg)
-
-        # First stage question — route through _send_response for TTS
-        stage_msg = await orchestrator.begin_current_stage()
-        if stage_msg:
-            await _send_response(websocket, stage_msg, tts_queue, is_speaking)
+        # ===== Start or Resume Interview =====
+        was_in_progress = interview.status == "in_progress"
+        if not was_in_progress:
+            # Fresh start — save must succeed even if user disconnects during TTS
+            start_msg = await orchestrator.start()
+            try:
+                await websocket.send_json(start_msg)
+            except Exception:
+                pass
+            stage_msg = await orchestrator.begin_current_stage()
+            if stage_msg:
+                try:
+                    await _send_response(websocket, stage_msg, tts_queue, is_speaking)
+                except Exception:
+                    pass  # user disconnected during first TTS, conversation saved below
+            # Save initial state to DB for reconnection recovery
+            orchestrator.interview.answers = json.dumps(
+                orchestrator.conversation, ensure_ascii=False
+            )
+            await db.commit()
+        else:
+            # Reconnection — restore state without resetting timer or stage
+            orchestrator.state = OrchestratorState.WAITING_FOR_ANSWER
+            started = interview.started_at.replace(tzinfo=timezone.utc) if interview.started_at else datetime.now(timezone.utc)
+            elapsed = (datetime.now(timezone.utc) - started).total_seconds()
+            logger.info(
+                f"面试续接: interview_id={interview_id}, "
+                f"stage={interview.current_stage}, elapsed={elapsed:.0f}s"
+            )
+            # Rebuild dialogue from saved conversation
+            resume_dialogue = []
+            stage = interview.current_stage or orchestrator.current_stage()
+            resume_dialogue.append({
+                "role": "system",
+                "text": f"已恢复面试连接，当前在【{stage}】环节",
+                "time": "",
+            })
+            try:
+                saved = interview.answers
+                if saved:
+                    conv = json.loads(saved) if isinstance(saved, str) else saved
+                    for entry in conv:
+                        q = entry.get("question_text")
+                        a = entry.get("user_answer_text")
+                        if q:
+                            resume_dialogue.append({"role": "ai", "text": q, "time": ""})
+                        if a:
+                            resume_dialogue.append({"role": "user", "text": a, "time": ""})
+                    # Restore current_question from the last unanswered entry
+                    for entry in reversed(conv):
+                        if entry.get("question_text") and not entry.get("user_answer_text"):
+                            orchestrator.current_question = {
+                                "text": entry["question_text"],
+                                "is_follow_up": entry.get("is_follow_up", False),
+                            }
+                            break
+            except (json.JSONDecodeError, TypeError):
+                pass
+            remaining = max(0, settings.INTERVIEW_MAX_DURATION - int(elapsed))
+            await websocket.send_json({
+                "type": "session/resumed",
+                "data": {
+                    "interview_id": interview_id,
+                    "stage": interview.current_stage or orchestrator.current_stage(),
+                    "message": "已恢复面试连接",
+                    "dialogue": resume_dialogue,
+                    "remaining_seconds": remaining,
+                },
+            })
 
         # ===== Main message loop =====
 
@@ -228,6 +289,12 @@ async def interview_handler(websocket: WebSocket, interview_id: int, token: str)
 
                 if response:
                     await _send_response(websocket, response, tts_queue, is_speaking)
+                    # Save conversation to DB after each interaction
+                    if orchestrator:
+                        orchestrator.interview.answers = json.dumps(
+                            orchestrator.conversation, ensure_ascii=False
+                        )
+                        await db.commit()
                     # Start silence timer — prompt user if no response within timeout
                     resp_type = response.get("type", "")
                     if resp_type in ("ai/text", "control/stage_change") and orchestrator.state.value == "waiting_for_answer":
@@ -242,7 +309,7 @@ async def interview_handler(websocket: WebSocket, interview_id: int, token: str)
 
         except asyncio.TimeoutError:
             logger.warning(f"WebSocket心跳超时: interview_id={interview_id}")
-        except WebSocketDisconnect:
+        except (WebSocketDisconnect, RuntimeError):
             logger.info(f"WebSocket断开: interview_id={interview_id}")
         except Exception as e:
             logger.error(f"WebSocket错误: {e}\n{traceback.format_exc()}")
@@ -275,25 +342,28 @@ async def interview_handler(websocket: WebSocket, interview_id: int, token: str)
                     logger.info(f"录音URL已保存: {audio_url}")
 
             # --- Final state persistence ---
-            if orchestrator and orchestrator.interview.status == "in_progress":
-                # Session ended without finalize (disconnect / timeout)
-                orchestrator.interview.status = "completed"
-                orchestrator.interview.ended_at = datetime.now(timezone.utc)
+            # Keep in_progress on disconnect so user can reconnect within
+            # INTERVIEW_MAX_DURATION. Normal end already set completed via finalize().
+            if orchestrator:
+                is_ended = orchestrator.state.value == "ended"
+                if not is_ended and orchestrator.interview.status == "in_progress":
+                    orchestrator.interview.status = "in_progress"
 
             if orchestrator:
-                # Save answers with audio URLs (always, so report has them)
+                # Save answers with audio URLs (always, so reconnection can restore them)
                 orchestrator.interview.answers = json.dumps(
                     orchestrator.conversation, ensure_ascii=False
                 )
                 await db.commit()
 
-                # Trigger report generation AFTER audio URLs are saved
-                logger.info(
-                    f"后台生成报告: interview_id={interview_id}, audio={bool(audio_url)}"
-                )
-                asyncio.create_task(
-                    orchestrator._generate_report_bg(interview_id)
-                )
+                # Only generate report when interview genuinely ended
+                if is_ended:
+                    logger.info(
+                        f"后台生成报告: interview_id={interview_id}, audio={bool(audio_url)}"
+                    )
+                    asyncio.create_task(
+                        orchestrator._generate_report_bg(interview_id)
+                    )
 
             await session_manager.delete_session(interview_id)
             logger.info(f"WebSocket会话结束: interview_id={interview_id}")
@@ -358,8 +428,8 @@ async def _authenticate(
                 f"JWT用户不匹配: token_sub={token_user_id}, "
                 f"interview_user={interview.user_id}"
             )
-    except Exception:
-        logger.info(f"JWT解码失败，token非JWT格式: {token[:20]}...")
+    except Exception as e:
+        logger.info(f"JWT解码失败: {e.__class__.__name__}: {e} | token={token[:20]}...")
 
     logger.warning(
         f"Token验证失败: interview_id={interview_id}, token={token[:20]}..."
@@ -477,6 +547,14 @@ async def _send_response(
             is_speaking.clear()
 
     else:
+        # Safety: if response looks like raw LLM evaluation (missing "type" field,
+        # has "action" key), wrap it so the frontend doesn't show raw JSON
+        if resp_type == "" and "action" in response:
+            text = response.get("message") or response.get("question_text") or ""
+            response = {
+                "type": "ai/text",
+                "data": {"text": text, "is_final": True},
+            }
         await websocket.send_json(response)
 
 

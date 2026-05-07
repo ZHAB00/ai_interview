@@ -12,7 +12,8 @@ export function useWebSocket(options = {}) {
   const {
     onJsonMessage = () => {},
     onAudioChunk = () => {},
-    onStatusChange = () => {}
+    onStatusChange = () => {},
+    onAuthFailure = null  // called when WS closes with 4001 (auth failed)
   } = options
 
   const wsStatus = ref('disconnected') // connecting | connected | reconnecting | disconnected
@@ -61,6 +62,12 @@ export function useWebSocket(options = {}) {
       ws.onclose = (event) => {
         clearPing()
         if (destroyed) return
+        // Auth failure — notify caller so they can refresh token
+        if (event.code === 4001) {
+          setStatus('disconnected')
+          if (onAuthFailure) onAuthFailure()
+          return
+        }
         // Normal closure or terminal codes — do not reconnect
         if (event.code === 1000 || event.code === 1001 || event.code >= 4000) {
           setStatus('disconnected')

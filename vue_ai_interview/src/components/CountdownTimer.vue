@@ -2,14 +2,21 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 
 const props = defineProps({
-  totalSeconds: { type: Number, default: 2700 } // 45 minutes
+  totalSeconds: { type: Number, default: 2700 }, // 45 minutes
+  initialRemaining: { type: Number, default: null } // override for resume
 })
 
 const emit = defineEmits(['expired', 'warning'])
 
-const remaining = ref(props.totalSeconds)
+const remaining = ref(props.initialRemaining ?? props.totalSeconds)
 const isRunning = ref(true)
 let timer = null
+
+watch(() => props.initialRemaining, (val) => {
+  if (val != null) {
+    remaining.value = val
+  }
+})
 
 const display = computed(() => {
   const m = Math.floor(remaining.value / 60)
@@ -25,7 +32,7 @@ function start() {
   if (timer) return
   isRunning.value = true
   timer = setInterval(() => {
-    if (remaining.value > -60) { // 1 min buffer after 0
+    if (remaining.value > 0) {
       remaining.value--
     } else {
       stop()

@@ -27,16 +27,65 @@ from app.schemas.interview import (
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/interviews", tags=["面试"])
 
+MAX_VISIBLE = 20
+SOFT_DELETE_RETENTION_DAYS = 7
+
 
 def _cleanup_stale_interview(interview: Interview) -> bool:
     """If interview exceeded max duration, mark completed. Returns True if cleaned."""
     if interview.status == "in_progress" and interview.started_at:
-        elapsed = (datetime.now(timezone.utc) - interview.started_at).total_seconds()
+        now_utc = datetime.now(timezone.utc)
+        started = interview.started_at.replace(tzinfo=timezone.utc)
+        elapsed = (now_utc - started).total_seconds()
         if elapsed >= settings.INTERVIEW_MAX_DURATION:
             interview.status = "completed"
             interview.ended_at = datetime.now(timezone.utc)
             return True
     return False
+
+
+async def _trim_history(user_id: int, db: AsyncSession):
+    """Keep at most MAX_VISIBLE non-favorited, non-deleted interviews.
+    Soft-delete the oldest exceeding ones.
+    Hard-delete records soft-deleted more than SOFT_DELETE_RETENTION_DAYS ago.
+    """
+    # Hard-delete old soft-deleted records
+    cutoff = datetime.now(timezone.utc) - timedelta(days=SOFT_DELETE_RETENTION_DAYS)
+    old_deleted = await db.execute(
+        select(Interview).where(
+            Interview.user_id == user_id,
+            Interview.deleted_at.isnot(None),
+            Interview.deleted_at < cutoff,
+        )
+    )
+    for rec in old_deleted.scalars().all():
+        logger.info(f"硬删除过期记录: interview_id={rec.id}")
+        await db.delete(rec)
+
+    # Count visible records (not deleted, not favorited)
+    visible_count = await db.execute(
+        select(func.count()).select_from(Interview).where(
+            Interview.user_id == user_id,
+            Interview.deleted_at.is_(None),
+            Interview.is_favorited == 0,
+        )
+    )
+    total_visible = visible_count.scalar() or 0
+
+    if total_visible > MAX_VISIBLE:
+        excess = total_visible - MAX_VISIBLE
+        old_result = await db.execute(
+            select(Interview).where(
+                Interview.user_id == user_id,
+                Interview.deleted_at.is_(None),
+                Interview.is_favorited == 0,
+            )
+            .order_by(Interview.created_at.asc())
+            .limit(excess)
+        )
+        for rec in old_result.scalars().all():
+            rec.deleted_at = datetime.now(timezone.utc)
+            logger.info(f"软删除超限记录: interview_id={rec.id}")
 
 
 @router.post("", response_model=CreateInterviewResponse, status_code=201)
@@ -91,6 +140,18 @@ async def create_interview(
             stale.ended_at = datetime.now(timezone.utc)
             logger.info(f"放弃旧面试: interview_id={stale.id}")
 
+    # Abandon created-but-never-entered interviews
+    created_result = await db.execute(
+        select(Interview).where(
+            Interview.user_id == current_user.id,
+            Interview.status == "created",
+        )
+    )
+    for created in created_result.scalars().all():
+        created.status = "abandoned"
+        created.ended_at = datetime.now(timezone.utc)
+        logger.info(f"废弃未开始面试: interview_id={created.id}")
+
     interview = Interview(
         user_id=current_user.id,
         resume_id=resume_id,
@@ -101,6 +162,10 @@ async def create_interview(
         status="created",
     )
     db.add(interview)
+    await db.flush()
+
+    # Trim history: keep at most MAX_VISIBLE visible records
+    await _trim_history(current_user.id, db)
     await db.commit()
     await db.refresh(interview)
 
@@ -134,6 +199,7 @@ async def get_active_interview(
         select(Interview).where(
             Interview.user_id == current_user.id,
             Interview.status == "in_progress",
+            Interview.deleted_at.is_(None),
         )
     )
     interview = result.scalars().all()
@@ -148,12 +214,17 @@ async def get_active_interview(
     if not active:
         return {"active": False, "interview_id": None}
 
+    started = active.started_at.replace(tzinfo=timezone.utc) if active.started_at else datetime.now(timezone.utc)
+    elapsed = (datetime.now(timezone.utc) - started).total_seconds()
+    remaining = max(0, settings.INTERVIEW_MAX_DURATION - int(elapsed))
     return {
         "active": True,
         "interview_id": active.id,
         "position": active.position,
         "stage": active.current_stage,
         "mode": active.mode,
+        "started_at": active.started_at.isoformat() if active.started_at else None,
+        "remaining_seconds": remaining,
     }
 
 
@@ -205,17 +276,23 @@ async def get_history(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """获取当前用户的面试历史记录（分页）。favorited 优先显示。"""
+    """获取当前用户的面试历史记录（分页）。favorited 优先显示，不展示已删除。"""
     page_size = min(page_size, 20)
 
     count_result = await db.execute(
-        select(func.count()).select_from(Interview).where(Interview.user_id == current_user.id)
+        select(func.count()).select_from(Interview).where(
+            Interview.user_id == current_user.id,
+            Interview.deleted_at.is_(None),
+        )
     )
     total = count_result.scalar() or 0
 
     result = await db.execute(
         select(Interview)
-        .where(Interview.user_id == current_user.id)
+        .where(
+            Interview.user_id == current_user.id,
+            Interview.deleted_at.is_(None),
+        )
         .order_by(Interview.is_favorited.desc(), Interview.created_at.desc())
         .offset((page - 1) * page_size)
         .limit(page_size)
@@ -267,6 +344,7 @@ async def toggle_favorite(
             select(func.count()).select_from(Interview).where(
                 Interview.user_id == current_user.id,
                 Interview.is_favorited == 1,
+                Interview.deleted_at.is_(None),
             )
         )
         if (fav_count.scalar() or 0) >= 5:

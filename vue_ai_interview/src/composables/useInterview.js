@@ -123,7 +123,30 @@ export function useInterview(options = {}) {
   const { wsStatus, connect: wsConnect, disconnect: wsDisconnect, send, sendBinary } = useWebSocket({
     onJsonMessage: handleMessage,
     onAudioChunk: queueAudioChunk,
-    onStatusChange: (status) => { store.wsStatus = status }
+    onStatusChange: (status) => { store.wsStatus = status },
+    onAuthFailure: async () => {
+      // Token expired or invalid — get fresh token from reconnect API
+      try {
+        const { reconnectInterview } = await import('../services/interviewService.js')
+        const { data } = await reconnectInterview(store.interviewId)
+        const newToken = data.ws_token
+        const newPath = data.ws_url
+        sessionStorage.setItem('ws_token', newToken)
+        sessionStorage.setItem('ws_url', newPath)
+        let wsUrl
+        if (newPath.startsWith('ws://') || newPath.startsWith('wss://')) {
+          wsUrl = newPath
+        } else {
+          const apiBase = import.meta.env.VITE_API_BASE_URL || ''
+          const wsBase = apiBase.replace(/^http/, 'ws')
+          wsUrl = wsBase + newPath
+        }
+        wsConnect(wsUrl, newToken)
+      } catch {
+        ElMessage.error('面试已失效，请返回首页重新开始')
+        router.push('/dashboard')
+      }
+    }
   })
 
   // --- Audio Recorder (manual PTT, no VAD auto-trigger) ---
@@ -209,6 +232,7 @@ export function useInterview(options = {}) {
         console.log('[面试] 会话已开始, 阶段:', data.stage || '初筛', data.message ? '| 消息:' + data.message : '')
         store.currentStage = data.stage || '初筛'
         store.status = INTERVIEW_STATUS.IN_PROGRESS
+        if (data.remaining_seconds) remainingSeconds.value = data.remaining_seconds
         if (data.message) store.addMessage('system', data.message)
         break
 
@@ -247,14 +271,24 @@ export function useInterview(options = {}) {
         break
 
       case 'ai/text':
-        if (data.is_final === false) {
-          console.log('[面试] AI文本(流式):', data.text?.substring(0, 50) + (data.text?.length > 50 ? '...' : ''))
-          store.addMessage('ai', data.text, true)
-        } else {
-          console.log('[面试] AI文本(最终):', data.text)
-          store.finalizeMessage('ai')
-          if (data.text && data.text !== store.dialogue[store.dialogue.length - 1]?.text) {
-            store.addMessage('ai', data.text, false)
+        {
+          let text = data.text || ''
+          // Defensive: if the response leaked raw LLM evaluation JSON, extract message
+          if (text.trim().startsWith('{') && text.includes('"action"')) {
+            try {
+              const parsed = JSON.parse(text)
+              text = parsed.message || parsed.question_text || text
+            } catch { /* keep as-is */ }
+          }
+          if (data.is_final === false) {
+            console.log('[面试] AI文本(流式):', text?.substring(0, 50) + (text?.length > 50 ? '...' : ''))
+            store.addMessage('ai', text, true)
+          } else {
+            console.log('[面试] AI文本(最终):', text)
+            store.finalizeMessage('ai')
+            if (text && text !== store.dialogue[store.dialogue.length - 1]?.text) {
+              store.addMessage('ai', text, false)
+            }
           }
         }
         break
@@ -284,8 +318,26 @@ export function useInterview(options = {}) {
         if (data.review) store.addMessage('ai', data.review)
         break
 
+      case 'session/resumed':
+        console.log('[面试] 会话续接:', data.stage, data.message, '对话条数:', data.dialogue?.length)
+        store.currentStage = data.stage || store.currentStage
+        store.status = INTERVIEW_STATUS.IN_PROGRESS
+        store.setAiStatus(AI_STATUS.LISTENING)  // AI is waiting, not speaking
+        if (data.remaining_seconds) remainingSeconds.value = data.remaining_seconds
+        // Restore dialogue history from backend
+        if (data.dialogue && data.dialogue.length > 0) {
+          data.dialogue.forEach(m => {
+            store.addMessage(m.role, m.text, false)
+          })
+        }
+        if (data.message) store.addMessage('system', data.message)
+        break
+
       case 'session/end':
         console.log('[面试] 会话结束')
+        clearTimeout(endingTimer)
+        isEnding.value = false
+        isEndingLong.value = false
         store.status = INTERVIEW_STATUS.COMPLETED
         flushAudioPlayback()
         wsDisconnect()
@@ -299,9 +351,17 @@ export function useInterview(options = {}) {
 
   // --- Public API ---
   const stageTransition = ref(null)
+  const remainingSeconds = ref(null)
+  const isEnding = ref(false)
+  const isEndingLong = ref(false)  // true after 10s — show "taking longer" message
+  let endingTimer = null
+  const ENDING_TIMEOUT_MS = 10000
 
   async function startInterview(interviewId, wsToken, wsUrl) {
-    store.resetInterview()
+    // Only reset on fresh start; reconnect preserves state via session/resumed
+    if (!store.interviewId || store.interviewId !== interviewId) {
+      store.resetInterview()
+    }
     store.interviewId = interviewId
     store.wsToken = wsToken
     store.wsUrl = wsUrl
@@ -312,7 +372,6 @@ export function useInterview(options = {}) {
     }
     // Pre-unlock audio playback while user gesture is still valid
     unlockAudio()
-    // Mic starts OFF — user must explicitly click to record
 
     wsConnect(wsUrl, wsToken)
   }
@@ -405,12 +464,13 @@ export function useInterview(options = {}) {
     console.log('[面试] 主动结束面试')
     clearRecordingTimer()
     clearDraftTimer()
+    isEnding.value = true
     send({ type: 'control/end_session' })
-    flushAudioPlayback()
-    wsDisconnect()
-    micDestroy()
-    store.status = INTERVIEW_STATUS.ABANDONED
-    router.push('/dashboard')
+    // If no response within timeout, show "taking longer" message but keep waiting
+    endingTimer = setTimeout(() => {
+      console.warn('[面试] 结束超时，继续等待')
+      isEndingLong.value = true
+    }, ENDING_TIMEOUT_MS)
   }
 
   function closeStageTransition() {
@@ -420,9 +480,12 @@ export function useInterview(options = {}) {
   onUnmounted(() => {
     clearRecordingTimer()
     clearDraftTimer()
+    clearTimeout(endingTimer)
     flushAudioPlayback()
     micDestroy()
     wsDisconnect()
+    // Reset store so other pages don't think interview is still active
+    store.resetInterview()
   })
 
   const stateRefs = storeToRefs(store)
@@ -457,6 +520,9 @@ export function useInterview(options = {}) {
     sendManualText,
     submitCode,
     endSession,
-    closeStageTransition
+    remainingSeconds,
+    closeStageTransition,
+    isEnding,
+    isEndingLong
   }
 }

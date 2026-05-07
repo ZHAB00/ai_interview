@@ -11,3 +11,9 @@
 .DS_Store
 Thumbs.db
 问题反馈*.txt
+
+# 项目文档（不上传 GitHub）
+开发日志.md
+部署指南.md
+项目说明文件/
+vue_ai_interview/项目说明文件/

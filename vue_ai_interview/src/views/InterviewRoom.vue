@@ -1,6 +1,6 @@
 <script setup>
 import { ref, onMounted, onUnmounted, nextTick, watch, computed } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import { AI_STATUS } from '../utils/constants.js'
 import { useInterview } from '../composables/useInterview.js'
@@ -12,6 +12,7 @@ import CountdownTimer from '../components/CountdownTimer.vue'
 import StageTransition from '../components/StageTransition.vue'
 
 const route = useRoute()
+const router = useRouter()
 
 // --- VAD (kept for potential future use, not used in PTT mode) ---
 const {
@@ -26,8 +27,9 @@ const {
   micParsing, recordingDuration, MAX_RECORD_SEC,
   draftText, draftId, draftModified,
   startInterview, startMic, stopMic, reRecord, confirmDraft, updateDraft, sendManualText,
-  isMicActive,
-  submitCode, endSession, closeStageTransition
+  isMicActive, remainingSeconds,
+  submitCode, endSession, closeStageTransition,
+  isEnding, isEndingLong
 } = useInterview({ externalVAD: vadDetect })
 
 // Mic PTT state — moved to useInterview for unified control
@@ -85,21 +87,38 @@ onMounted(async () => {
   initCamera()
 
   const interviewId = route.params.id
-  const wsToken = sessionStorage.getItem('ws_token')
-  const wsPath = sessionStorage.getItem('ws_url')
+  if (!interviewId) return
 
-  if (interviewId && wsToken && wsPath) {
-    // ws_url from API may be a full URL (wss://host/path) or a relative path (/ws/interview/xxx)
-    let wsUrl
-    if (wsPath.startsWith('ws://') || wsPath.startsWith('wss://')) {
-      wsUrl = wsPath
-    } else {
-      const apiBase = import.meta.env.VITE_API_BASE_URL || ''
-      const wsBase = apiBase.replace(/^http/, 'ws')
-      wsUrl = wsBase + wsPath
+  let wsToken = sessionStorage.getItem('ws_token')
+  let wsPath = sessionStorage.getItem('ws_url')
+
+  // Always refresh token on mount — stored token may have expired
+  try {
+    const { reconnectInterview } = await import('../services/interviewService.js')
+    const { data } = await reconnectInterview(interviewId)
+    wsToken = data.ws_token
+    wsPath = data.ws_url
+    sessionStorage.setItem('ws_token', wsToken)
+    sessionStorage.setItem('ws_url', wsPath)
+  } catch {
+    // Fallback to stored token if reconnect API fails
+    if (!wsToken || !wsPath) {
+      ElMessage.error('无法恢复面试，请返回首页重新开始')
+      router.push('/dashboard')
+      return
     }
-    startInterview(interviewId, wsToken, wsUrl)
   }
+
+  // ws_url from API may be a full URL (wss://host/path) or a relative path (/ws/interview/xxx)
+  let wsUrl
+  if (wsPath.startsWith('ws://') || wsPath.startsWith('wss://')) {
+    wsUrl = wsPath
+  } else {
+    const apiBase = import.meta.env.VITE_API_BASE_URL || ''
+    const wsBase = apiBase.replace(/^http/, 'ws')
+    wsUrl = wsBase + wsPath
+  }
+  startInterview(interviewId, wsToken, wsUrl)
 })
 
 onUnmounted(() => {
@@ -114,6 +133,11 @@ function handleSendText() {
   if (!text) return
   sendManualText(text)
   manualText.value = ''
+}
+
+function handleTimeout() {
+  ElMessage.error('面试时间已到，即将结束')
+  setTimeout(() => endSession(), 3000)
 }
 
 // --- End interview ---
@@ -180,7 +204,7 @@ function handleMicToggle() {
     <header class="room-header">
       <div class="header-left">
         <span class="stage-name">{{ currentStage }}</span>
-        <CountdownTimer />
+        <CountdownTimer :initialRemaining="remainingSeconds" @expired="handleTimeout" />
       </div>
       <div class="header-center"></div>
       <div class="header-right">
@@ -317,6 +341,16 @@ function handleMicToggle() {
       :autoClose="1500"
       @close="closeStageTransition"
     />
+
+    <!-- Ending overlay -->
+    <div v-if="isEnding" class="ending-overlay">
+      <div class="ending-card">
+        <el-icon class="ending-spin" :size="36"><Loading /></el-icon>
+        <p class="ending-text">正在结束面试，请不要操作</p>
+        <p class="ending-sub" v-if="!isEndingLong">报告生成中，请稍候…</p>
+        <p class="ending-sub ending-long" v-else>报告生成时间较长，请稍候…</p>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -455,6 +489,44 @@ function handleMicToggle() {
 @keyframes avatar-nod { 0% { transform: translateY(0); } 100% { transform: translateY(-3px); } }
 @keyframes look-away { 0% { transform: translateX(0); } 100% { transform: translateX(3px); } }
 @keyframes mouth-talk { 0% { height: 4px; } 100% { height: 10px; } }
+
+/* Ending overlay */
+.ending-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(128, 128, 128, 0.6);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+.ending-card {
+  background: var(--color-card);
+  border-radius: 8px;
+  padding: 32px 48px;
+  text-align: center;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.15);
+}
+.ending-spin {
+  animation: ending-spin 1s linear infinite;
+  color: var(--color-accent);
+}
+.ending-text {
+  margin: 16px 0 6px;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--color-text);
+}
+.ending-sub {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+@keyframes ending-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
 
 /* Footer */
 .room-footer {
