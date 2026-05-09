@@ -4,7 +4,7 @@ import router from '../router/index.js'
 
 export function getBaseURL() {
   const url = import.meta.env.VITE_API_BASE_URL
-  if (!url) {
+  if (url === undefined) {
     throw new Error(
       'VITE_API_BASE_URL is not configured. Please set it in your .env file ' +
       '(e.g. VITE_API_BASE_URL=http://localhost:8000)'
