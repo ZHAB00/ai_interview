@@ -1,11 +1,9 @@
 """Resume parsing service - extracts text from files and calls ResumeAgent."""
 
 import logging
-import os
 import uuid
 from pathlib import Path
 
-from PIL import Image
 from pypdf import PdfReader
 from docx import Document as DocxDocument
 
@@ -15,11 +13,8 @@ from app.core.exceptions import ValidationErrorException
 
 logger = logging.getLogger(__name__)
 
-# Maximum file size for image OCR
-MAX_IMAGE_SIZE = 5 * 1024 * 1024  # 5MB
-
 # Supported file extensions
-SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".jpg", ".jpeg", ".png"}
+SUPPORTED_EXTENSIONS = {".pdf", ".docx"}
 
 
 async def parse_resume(file_bytes: bytes, filename: str, position: str) -> tuple[dict, str]:
@@ -80,18 +75,6 @@ async def _extract_text(file_bytes: bytes, ext: str) -> str:
                     lines.append(line)
                 text = "\n".join(lines)
             return text.strip() or "（DOCX内容提取为空）"
-
-        elif ext in (".jpg", ".jpeg", ".png"):
-            import io
-            image = Image.open(io.BytesIO(file_bytes))
-            # Basic OCR placeholder — requires pytesseract and tesseract installed
-            try:
-                import pytesseract
-                text = pytesseract.image_to_string(image, lang="chi_sim+eng")
-                return text.strip() or "（图片OCR提取为空）"
-            except ImportError:
-                logger.warning("pytesseract not installed, returning placeholder for image OCR")
-                return "（图片简历，需要安装 Tesseract OCR 引擎）"
 
         else:
             raise ValidationErrorException(f"不支持的文件格式: {ext}")

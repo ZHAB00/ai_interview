@@ -40,13 +40,13 @@ onMounted(checkActive)
 
 const tabs = computed(() => {
   const items = [
-    { key: 'dashboard', label: '首页', icon: 'HomeFilled', path: '/dashboard' },
-    { key: 'interview', label: '面试', icon: 'Mic', path: isInterviewActive.value ? route.path : '/dashboard' },
-    { key: 'messages', label: '留言', icon: 'ChatDotRound', path: '/messages' },
-    { key: 'report', label: '报告', icon: 'Document', path: '/dashboard' },
+    { key: 'dashboard', label: '首页', icon: 'HomeFilled', activeIcon: 'HomeFilled', path: '/dashboard' },
+    { key: 'interview', label: '面试', icon: 'Mic', activeIcon: 'Mic', path: isInterviewActive.value ? route.path : '/dashboard' },
+    { key: 'messages', label: '留言', icon: 'ChatDotRound', activeIcon: 'ChatDotSquare', path: '/messages' },
+    { key: 'report', label: '报告', icon: 'Document', activeIcon: 'DataAnalysis', path: '/dashboard' },
   ]
   if (authStore.isAdmin) {
-    items.push({ key: 'admin', label: '管理', icon: 'Setting', path: adminTabSub.value === 'questions' ? '/admin/questions' : '/admin/documents' })
+    items.push({ key: 'admin', label: '管理', icon: 'Setting', activeIcon: 'Setting', path: adminTabSub.value === 'questions' ? '/admin/questions' : '/admin/documents' })
   }
   return items
 })
@@ -57,6 +57,7 @@ const activeTab = computed(() => {
   if (p.startsWith('/messages')) return 'messages'
   if (p.startsWith('/report')) return 'report'
   if (p.startsWith('/admin')) return 'admin'
+  if (p === '/dashboard' && route.query.view === 'history') return 'report'
   return 'dashboard'
 })
 
@@ -195,7 +196,7 @@ function handleLogout() {
             </el-dropdown-menu>
           </template>
         </el-dropdown>
-        <el-dropdown trigger="click" v-if="authStore.isLoggedIn">
+        <el-dropdown trigger="click" v-if="authStore.isLoggedIn" class="desktop-only">
           <span class="user-info">
             {{ authStore.username || '用户' }}
             <el-icon><ArrowDown /></el-icon>
@@ -209,6 +210,7 @@ function handleLogout() {
             </el-dropdown-menu>
           </template>
         </el-dropdown>
+        <span v-if="authStore.isLoggedIn" class="user-info mobile-only">{{ authStore.username || '用户' }}</span>
       </div>
     </header>
 
@@ -229,7 +231,7 @@ function handleLogout() {
         :class="{ active: activeTab === tab.key }"
         @click="goTab(tab)"
       >
-        <el-icon :size="20"><component :is="tab.icon" /></el-icon>
+        <el-icon :size="20"><component :is="activeTab === tab.key ? tab.activeIcon : tab.icon" /></el-icon>
         <span class="tab-label">{{ tab.label }}</span>
       </div>
     </nav>
@@ -364,6 +366,9 @@ function handleLogout() {
 .bottom-tabs {
   display: none;
 }
+.mobile-only {
+  display: none;
+}
 
 @media (max-width: 768px) {
   .app-header {
@@ -377,6 +382,9 @@ function handleLogout() {
 
   .desktop-only {
     display: none !important;
+  }
+  .mobile-only {
+    display: inline;
   }
 
   .app-footer {

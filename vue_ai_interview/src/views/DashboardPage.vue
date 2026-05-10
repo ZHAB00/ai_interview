@@ -346,7 +346,7 @@ const guideSteps = steps
       <section class="card upload-section" v-if="uploadState !== 'done'">
         <div class="section-header">
           <h3>第一步：上传简历</h3>
-          <span class="section-hint">支持 PDF、Word、图片格式，最大 10MB</span>
+          <span class="section-hint">支持 PDF、Word 格式，最大 10MB</span>
         </div>
 
         <el-upload
@@ -356,14 +356,14 @@ const guideSteps = steps
           :auto-upload="false"
           :limit="1"
           :on-change="handleFileChange"
-          :accept="'.pdf,.docx,.jpg,.jpeg,.png'"
+          :accept="'.pdf,.docx'"
           :show-file-list="false"
           :disabled="uploadState === 'uploading' || uploadState === 'parsing'"
         >
           <el-icon class="upload-icon" :size="40"><UploadFilled /></el-icon>
           <div class="upload-text">
             <p>拖拽文件到此处，或 <em>点击上传</em></p>
-            <p class="upload-formats">PDF / DOCX / JPG / PNG</p>
+            <p class="upload-formats">PDF / DOCX</p>
           </div>
         </el-upload>
 
@@ -530,21 +530,21 @@ const guideSteps = steps
             <el-table-column min-width="140">
               <template #default="{ row }">
                 <div class="history-row">
-                  <div class="history-main">
-                    <span class="history-position">{{ row.position }}</span>
+                  <span class="history-position">{{ row.position }}</span>
+                  <div class="history-right">
                     <span class="history-meta">{{ row.difficulty }} / {{ row.mode === 'full' ? '全流程' : '阶段' }}</span>
                     <el-tag :type="statusConfig(row.status).type" size="small" class="history-status-tag">
                       {{ statusConfig(row.status).text }}
                     </el-tag>
-                    <span v-if="row.overall_score != null" class="history-score" :class="{ pass: row.passed, fail: !row.passed }">{{ row.overall_score }}</span>
-                  </div>
-                  <div class="history-actions">
+                    <span class="history-score" :class="{ pass: row.passed, fail: row.passed != null && !row.passed }">{{ row.overall_score != null ? row.overall_score : '' }}</span>
+                    <div class="history-actions">
                     <span class="history-time">{{ formatTime(row.created_at) }}</span>
                     <el-button v-if="row.status === 'completed'" text size="small" type="primary" @click="viewReport(row.interview_id)">报告</el-button>
                     <el-button text size="small" @click="toggleFav(row)" :type="row.is_favorited ? 'warning' : ''">
                       {{ row.is_favorited ? '★' : '☆' }}
                     </el-button>
                     <el-button text size="small" type="danger" @click="deleteInterviewItem(row)">删除</el-button>
+                  </div>
                   </div>
                 </div>
               </template>
@@ -595,11 +595,13 @@ const guideSteps = steps
   font-weight: 600;
   color: var(--color-text);
   margin-bottom: 4px;
+  text-align: center;
 }
 .page-desc {
   font-size: 13px;
   color: var(--color-text-secondary);
   margin-bottom: 24px;
+  text-align: center;
 }
 
 /* Sections */
@@ -615,6 +617,8 @@ const guideSteps = steps
   justify-content: space-between;
   align-items: center;
   margin-bottom: 16px;
+  flex-wrap: wrap;
+  gap: 4px;
 }
 .section-header h3 {
   font-size: 15px;
@@ -727,15 +731,15 @@ const guideSteps = steps
 
 /* History */
 .history-section .section-header .section-hint { font-size: 12px; color: var(--color-text-secondary); }
-.history-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
-.history-main { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex: 1; min-width: 0; }
-.history-position { font-size: 13px; color: var(--color-text); font-weight: 500; }
-.history-meta { font-size: 11px; color: var(--color-text-secondary); }
+.history-row { display: flex; align-items: baseline; gap: 8px; width: 100%; }
+.history-position { font-size: 13px; color: var(--color-text); font-weight: 500; flex: 0 0 130px; }
+.history-right { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+.history-meta { font-size: 11px; color: var(--color-text-secondary); flex: 0 0 80px; text-align: right; }
 .history-status-tag { flex-shrink: 0; }
-.history-score { font-size: 13px; font-weight: 600; }
+.history-score { font-size: 13px; font-weight: 600; flex: 0 0 28px; text-align: center; }
+.history-actions { display: flex; align-items: center; gap: 4px; flex: 0 0 220px; justify-content: flex-end; }
 .history-score.pass { color: var(--color-success); }
 .history-score.fail { color: var(--color-error); }
-.history-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
 .history-time { font-size: 11px; color: var(--color-text-secondary); }
 .history-pagination { display: flex; justify-content: center; margin-top: 12px; }
 
@@ -827,8 +831,53 @@ const guideSteps = steps
     padding: 16px 12px 48px;
   }
 
+  .section-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
   .summary-grid {
     grid-template-columns: 1fr;
+  }
+
+  .history-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+  }
+
+  .history-position {
+    flex: auto;
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .history-right {
+    flex: auto;
+    margin-left: 0;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .history-meta {
+    flex: auto;
+    text-align: left;
+    width: auto;
+  }
+
+  .history-status-tag {
+    flex: auto;
+  }
+
+  .history-score {
+    flex: auto;
+    width: auto;
+  }
+
+  .history-actions {
+    flex: auto;
+    width: 100%;
+    justify-content: flex-start;
   }
 
   .history-table-wrap {

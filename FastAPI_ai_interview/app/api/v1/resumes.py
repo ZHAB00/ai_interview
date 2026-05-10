@@ -22,9 +22,6 @@ router = APIRouter(prefix="/api/resumes", tags=["简历"])
 _RESUME_MAGIC = {
     ".pdf":  b"%PDF",
     ".docx": b"PK\x03\x04",
-    ".png":  b"\x89PNG",
-    ".jpg":  b"\xff\xd8\xff",
-    ".jpeg": b"\xff\xd8\xff",
 }
 
 
