@@ -43,7 +43,9 @@ class CreateMessageRequest(BaseModel):
 
 class MessageItem(BaseModel):
     id: int
+    user_id: int
     username: str
+    role: str = "user"
     content: str
     created_at: str
 
@@ -56,23 +58,26 @@ async def list_messages(
 ):
     """获取留言列表。"""
     result = await db.execute(
-        select(Message)
+        select(Message, User.role)
+        .join(User, Message.user_id == User.id, isouter=True)
         .order_by(Message.created_at.desc())
         .offset((page - 1) * page_size)
         .limit(page_size)
     )
-    messages = result.scalars().all()
+    rows = result.all()
     return {
         "items": [
             MessageItem(
                 id=m.id,
+                user_id=m.user_id,
                 username=m.username,
+                role=role or "user",
                 content=m.content,
                 created_at=m.created_at.isoformat(),
             )
-            for m in messages
+            for m, role in rows
         ],
-        "total": len(messages),
+        "total": len(rows),
     }
 
 
@@ -111,3 +116,24 @@ async def create_message(
 
     logger.info(f"新留言: user={current_user.username}, id={msg.id}")
     return {"id": msg.id, "username": msg.username, "content": msg.content, "created_at": msg.created_at.isoformat()}
+
+
+@router.delete("/{message_id}")
+async def delete_message(
+    message_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """删除留言。作者可删自己的，管理员可删任意。"""
+    result = await db.execute(select(Message).where(Message.id == message_id))
+    msg = result.scalar_one_or_none()
+    if not msg:
+        from app.core.exceptions import NotFoundException
+        raise NotFoundException("留言不存在")
+    if current_user.role != "admin" and msg.user_id != current_user.id:
+        from app.core.exceptions import ForbiddenException
+        raise ForbiddenException("无权删除此留言")
+    await db.delete(msg)
+    await db.commit()
+    logger.info(f"留言已删除: id={message_id}, by={current_user.username}")
+    return {"detail": "ok"}

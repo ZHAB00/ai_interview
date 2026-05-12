@@ -39,6 +39,28 @@ async function sendMessage() {
   }
 }
 
+async function deleteMessage(id) {
+  try {
+    await api.delete(`/api/messages/${id}`)
+    await loadMessages()
+  } catch (e) {
+    ElMessage.error(e.response?.data?.error?.message || '删除失败')
+  }
+}
+
+function canDelete(m) {
+  return authStore.isAdmin || m.user_id === authStore.userInfo?.user_id
+}
+
+import { ElMessageBox } from 'element-plus'
+
+async function confirmDelete(m) {
+  try {
+    await ElMessageBox.confirm('确定删除这条留言？', '提示', { confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning' })
+    await deleteMessage(m.id)
+  } catch {}
+}
+
 function fmtTime(iso) {
   if (!iso) return ''
   const d = new Date(iso)
@@ -71,8 +93,14 @@ onMounted(loadMessages)
         <div class="mp-avatar">{{ m.username.charAt(0) }}</div>
         <div class="mp-body">
           <div class="mp-meta">
-            <span class="mp-user">{{ m.username }}</span>
-            <span class="mp-time">{{ fmtTime(m.created_at) }}</span>
+            <span class="mp-user">
+              {{ m.username }}
+              <span class="mp-admin-tag" v-if="m.role === 'admin'">管理员</span>
+            </span>
+            <div class="mp-actions">
+              <button class="mp-del-btn" v-if="canDelete(m)" @click="confirmDelete(m)" title="删除">×</button>
+              <span class="mp-time">{{ fmtTime(m.created_at) }}</span>
+            </div>
           </div>
           <div class="mp-text">{{ m.content }}</div>
         </div>
@@ -136,6 +164,15 @@ onMounted(loadMessages)
 .mp-body { flex: 1; min-width: 0; }
 .mp-meta { display: flex; justify-content: space-between; margin-bottom: 6px; }
 .mp-user { font-size: 14px; font-weight: 500; color: var(--color-accent); }
+.mp-admin-tag {
+  display: inline-block; font-size: 10px; background: var(--color-accent); color: #fff;
+  padding: 1px 5px; border-radius: 3px; margin-left: 4px; vertical-align: middle; line-height: 1.4;
+}
+.mp-actions { display: flex; align-items: center; gap: 8px; }
+.mp-del-btn {
+  background: none; border: none; font-size: 16px; color: var(--color-text-secondary); cursor: pointer; padding: 0; line-height: 1;
+}
+.mp-del-btn:hover { color: #e74c3c; }
 .mp-time { font-size: 11px; color: var(--color-text-secondary); }
 .mp-text { font-size: 15px; color: var(--color-text); line-height: 1.6; word-break: break-word; }
 
