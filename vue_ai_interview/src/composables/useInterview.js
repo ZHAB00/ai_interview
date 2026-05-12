@@ -125,7 +125,16 @@ export function useInterview(options = {}) {
     onAudioChunk: queueAudioChunk,
     onStatusChange: (status) => { store.wsStatus = status },
     onAuthFailure: async () => {
-      // Token expired or invalid — get fresh token from reconnect API
+      // Token expired or invalid — get fresh token from reconnect API (max 1 retry)
+      if (store._authRetryCount) {
+        wsDisconnect()
+        sessionStorage.removeItem('ws_token')
+        sessionStorage.removeItem('ws_url')
+        ElMessage.error('面试已失效，请返回首页重新开始')
+        router.push('/dashboard')
+        return
+      }
+      store._authRetryCount = 1
       try {
         const { reconnectInterview } = await import('../services/interviewService.js')
         const { data } = await reconnectInterview(store.interviewId)
@@ -143,6 +152,9 @@ export function useInterview(options = {}) {
         }
         wsConnect(wsUrl, newToken)
       } catch {
+        wsDisconnect()
+        sessionStorage.removeItem('ws_token')
+        sessionStorage.removeItem('ws_url')
         ElMessage.error('面试已失效，请返回首页重新开始')
         router.push('/dashboard')
       }
@@ -365,6 +377,7 @@ export function useInterview(options = {}) {
     store.interviewId = interviewId
     store.wsToken = wsToken
     store.wsUrl = wsUrl
+    store._authRetryCount = 0
 
     const ok = await micInit()
     if (!ok) {

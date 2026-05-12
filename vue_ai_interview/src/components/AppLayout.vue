@@ -16,6 +16,13 @@ const authStore = useAuthStore()
 const interviewStore = useInterviewStore()
 const { theme: currentTheme, setTheme } = useTheme()
 
+// Reactive mobile detection
+const windowWidth = ref(window.innerWidth)
+function onResize() { windowWidth.value = window.innerWidth }
+onMounted(() => window.addEventListener('resize', onResize))
+onUnmounted(() => window.removeEventListener('resize', onResize))
+const isMobile = computed(() => windowWidth.value <= 768)
+
 const themeLabel = computed(() => {
   const m = { light: '浅色', dark: '深色', warm: '暖色' }
   return m[currentTheme.value] || '浅色'
@@ -196,21 +203,20 @@ function handleLogout() {
             </el-dropdown-menu>
           </template>
         </el-dropdown>
-        <el-dropdown trigger="click" v-if="authStore.isLoggedIn" class="desktop-only">
+        <el-dropdown trigger="click" v-if="authStore.isLoggedIn">
           <span class="user-info">
             {{ authStore.username || '用户' }}
             <el-icon><ArrowDown /></el-icon>
           </span>
           <template #dropdown>
             <el-dropdown-menu>
-              <el-dropdown-item @click="router.push('/dashboard')">首页</el-dropdown-item>
-              <el-dropdown-item v-if="authStore.isAdmin" @click="router.push('/admin/questions')">题库管理</el-dropdown-item>
-              <el-dropdown-item v-if="authStore.isAdmin" @click="router.push('/admin/documents')">文档管理</el-dropdown-item>
-              <el-dropdown-item divided @click="handleLogout">退出登录</el-dropdown-item>
+              <el-dropdown-item v-if="!isMobile" @click="router.push('/dashboard')">首页</el-dropdown-item>
+              <el-dropdown-item v-if="authStore.isAdmin && !isMobile" @click="router.push('/admin/questions')">题库管理</el-dropdown-item>
+              <el-dropdown-item v-if="authStore.isAdmin && !isMobile" @click="router.push('/admin/documents')">文档管理</el-dropdown-item>
+              <el-dropdown-item :divided="!isMobile" @click="handleLogout">退出登录</el-dropdown-item>
             </el-dropdown-menu>
           </template>
         </el-dropdown>
-        <span v-if="authStore.isLoggedIn" class="user-info mobile-only">{{ authStore.username || '用户' }}</span>
       </div>
     </header>
 

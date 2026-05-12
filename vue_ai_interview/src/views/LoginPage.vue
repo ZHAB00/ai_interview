@@ -116,4 +116,16 @@ async function handleLogin() {
   color: var(--color-accent);
   text-decoration: none;
 }
+
+@media (max-width: 768px) {
+  .auth-page {
+    padding: 24px 16px;
+    align-items: flex-start;
+    padding-top: 40px;
+  }
+  .auth-card {
+    width: 100%;
+    padding: 24px 20px;
+  }
+}
 </style>

@@ -26,6 +26,69 @@ const uploadError = ref('')
 const uploadFileList = ref([])
 const uploadRef = ref(null)
 
+// --- JD Input State ---
+const jdText = ref('')
+const jdAnalyzing = ref(false)
+const jdAnalysis = ref(null)  // { position, skills, requirements }
+const jdError = ref('')
+const jdInputExpanded = ref(false)
+const jdLocked = ref(false)
+const positionLocked = ref(false)
+const JD_MAX_CHARS = 3000
+
+function onJdInput() {
+  if (jdText.value.length > JD_MAX_CHARS) {
+    jdText.value = jdText.value.slice(0, JD_MAX_CHARS)
+    ElMessage.warning(`JD文本已截断至${JD_MAX_CHARS}字`)
+  }
+}
+
+async function analyzeJD() {
+  const text = jdText.value.trim()
+  if (text.length < 20) {
+    jdError.value = 'JD文本至少需要20个字符'
+    return
+  }
+  jdAnalyzing.value = true
+  jdError.value = ''
+  jdAnalysis.value = null
+  try {
+    const api = (await import('../services/api.js')).default
+    const { data } = await api.post('/api/interviews/analyze-jd', { jd_text: text })
+    jdAnalysis.value = data
+    // Check if position is in the list
+    // Fuzzy match: exact → contains → shared Chinese chars >= 2
+    const posMatch = positionOptions.find(p => {
+      if (p === data.position || p.includes(data.position) || data.position.includes(p)) return true
+      const jdCore = data.position.replace(/[a-zA-Z()（）\/\s]/g, '')
+      const optCore = p.replace(/[a-zA-Z()（）\/\s]/g, '')
+      const shared = [...jdCore].filter(c => optCore.includes(c))
+      return shared.length >= 2 && shared.length >= jdCore.length * 0.5
+    })
+    if (posMatch) {
+      config.position = posMatch
+      positionLocked.value = true
+      data.found_in_list = true
+    } else {
+      data.found_in_list = false
+    }
+    jdLocked.value = true
+    ElMessage.success('JD分析完成')
+  } catch (err) {
+    jdError.value = err.response?.data?.error?.message || 'JD分析失败，请重试'
+  } finally {
+    jdAnalyzing.value = false
+  }
+}
+
+function clearJD() {
+  jdText.value = ''
+  jdAnalysis.value = null
+  jdError.value = ''
+  jdLocked.value = false
+  positionLocked.value = false
+}
+
 // --- Interview Config State ---
 const config = reactive({
   position: '',
@@ -51,8 +114,25 @@ const positionOptions = [
   '后端开发工程师',
   '前端开发工程师',
   '全栈开发工程师',
+  '算法工程师',
+  '大数据工程师',
+  '测试开发工程师',
+  '运维开发工程师(SRE/DevOps)',
+  '移动端开发工程师',
+  '云计算工程师',
+  '安全工程师',
+  '架构师',
+  '嵌入式开发工程师',
+  '游戏开发工程师',
+  '区块链开发工程师',
+  '量化交易工程师',
   '数据分析师',
-  '产品经理'
+  '数据库管理员（DBA）',
+  '网络工程师',
+  '技术经理(Tech Lead)',
+  '产品经理',
+  'UI/UX设计师',
+  '运营专员',
 ]
 
 const difficultyOptions = ['初级', '中级', '高级']
@@ -60,11 +140,28 @@ const difficultyOptions = ['初级', '中级', '高级']
 // --- Position → Skills Mapping ---
 const POSITION_SKILL_MAP = {
   'AI Agent开发工程师': ['Python', 'LangChain', 'LLM', 'RAG', 'Prompt Engineering', 'FastAPI', 'Docker'],
-  '后端开发工程师':     ['Python', 'Java', 'Go', 'MySQL', 'Redis', 'Docker', 'Kubernetes', '微服务'],
-  '前端开发工程师':     ['Vue.js', 'React', 'TypeScript', 'JavaScript', 'CSS', 'Node.js', 'Webpack'],
-  '全栈开发工程师':     ['Python', 'Vue.js', 'React', 'TypeScript', 'MySQL', 'Docker', 'CI/CD'],
-  '数据分析师':         ['Python', 'SQL', 'Pandas', 'NumPy', 'Tableau', '机器学习', '数据可视化'],
-  '产品经理':           ['需求分析', '产品设计', '数据分析', '用户研究', '项目管理', 'Axure', 'Figma'],
+  '后端开发工程师':     ['Python', 'Java', 'Go', 'MySQL', 'Redis', 'Docker', 'Kubernetes', '微服务', '消息队列'],
+  '前端开发工程师':     ['Vue.js', 'React', 'TypeScript', 'JavaScript', 'CSS', 'Node.js', 'Webpack', 'Vite'],
+  '全栈开发工程师':     ['Python', 'Vue.js', 'React', 'TypeScript', 'MySQL', 'Docker', 'CI/CD', 'Node.js'],
+  '算法工程师':         ['Python', 'PyTorch', 'TensorFlow', 'NLP', 'CV', '深度学习', '模型部署', '特征工程'],
+  '大数据工程师':       ['Hadoop', 'Spark', 'Flink', 'Hive', 'Kafka', 'HBase', '数据湖', 'SQL', 'Scala'],
+  '测试开发工程师':     ['Python', 'Selenium', '自动化测试', '性能测试', 'CI/CD', '测试用例设计', 'JMeter'],
+  '运维开发工程师(SRE/DevOps)': ['Linux', 'Docker', 'Kubernetes', 'Terraform', 'Prometheus', 'CI/CD', 'Ansible', '云原生'],
+  '移动端开发工程师':   ['Flutter', 'React Native', 'Swift', 'Kotlin', 'Java', '性能优化', '跨平台开发'],
+  '云计算工程师':       ['AWS', 'Azure', '阿里云', '云原生', 'Serverless', 'Terraform', 'Docker', 'Kubernetes'],
+  '安全工程师':         ['渗透测试', '漏洞挖掘', 'WAF', 'OWASP', '密码学', '安全审计', '应急响应', 'Python'],
+  '架构师':             ['系统设计', '分布式系统', '微服务', '数据库设计', '高并发', '性能优化', '技术选型'],
+  '嵌入式开发工程师':   ['C', 'C++', 'RTOS', 'ARM', 'Linux内核', '驱动开发', 'I2C/SPI/UART', 'FreeRTOS'],
+  '游戏开发工程师':     ['Unity', 'Unreal Engine', 'C#', 'C++', '图形学', '物理引擎', '性能优化', '网络同步'],
+  '区块链开发工程师':   ['Solidity', 'Web3.js', 'Ethereum', '智能合约', '共识算法', 'DeFi', 'Go', 'Rust'],
+  '量化交易工程师':     ['Python', '回测框架', 'NumPy', 'Pandas', '市场微观结构', '风控模型', 'CTA策略'],
+  '数据分析师':         ['Python', 'SQL', 'Pandas', 'NumPy', 'Tableau', '机器学习', '数据可视化', 'A/B测试'],
+  '数据库管理员（DBA）':   ['MySQL', 'PostgreSQL', 'MongoDB', 'Redis', '性能调优', '备份恢复', '主从复制', 'SQL优化'],
+  '网络工程师':         ['TCP/IP', '路由协议', 'VLAN', 'VPN', '防火墙', 'Wireshark', 'SDN', '网络自动化'],
+  '技术经理(Tech Lead)': ['团队管理', '敏捷开发', '技术决策', '代码审查', '项目规划', '跨部门协作', 'OKR/KPI'],
+  '产品经理':           ['需求分析', '产品设计', '数据分析', '用户研究', '项目管理', 'Axure', 'Figma', 'PRD'],
+  'UI/UX设计师':        ['Figma', '用户研究', '交互设计', '视觉设计', '设计系统', '可用性测试', 'Sketch', '原型设计'],
+  '运营专员':           ['数据分析', '用户增长', '内容运营', '活动策划', '社群运营', 'SEO/SEM', '转化率优化'],
 }
 
 // Watch position change → auto-update skills (unless user manually edited)
@@ -179,6 +276,12 @@ async function handleStartInterview() {
     if (config.mode === INTERVIEW_MODE.STAGE) {
       params.selected_stages = config.selectedStages
     }
+    if (jdText.value.trim()) {
+      params.jd_text = jdText.value.trim()
+      if (jdAnalysis.value) {
+        params.jd_analysis = jdAnalysis.value
+      }
+    }
 
     const { data } = await createInterview(params)
     // Store ws_token for the interview room to use
@@ -202,26 +305,43 @@ async function handleStartInterview() {
 // --- Quick Start ---
 function handleQuickStart() {
   const defaultPosition = 'AI Agent开发工程师'
-  const defaultSkills = POSITION_SKILL_MAP[defaultPosition] || ['Python', 'FastAPI', 'Vue.js']
+  let skills = POSITION_SKILL_MAP[defaultPosition] || ['Python', 'FastAPI', 'Vue.js']
+
+  // If JD analyzed, use JD skills instead of defaults
+  let jdNotice = ''
+  if (jdAnalysis.value) {
+    const jdSkills = jdAnalysis.value.skills || []
+    if (jdSkills.length > 0) {
+      skills = jdSkills
+      jdNotice = '，技能已替换为JD要求的技术栈'
+    }
+  }
 
   resumeData.value = {
     name: '示例用户',
     phone: '13800000000',
     email: 'demo@example.com',
     education: [{ school: '示例大学', degree: '本科', major: '计算机科学', year: '2024' }],
-    skills: [...defaultSkills],
+    skills: [...skills],
     work_experience: [{ company: 'XX科技', position: '后端开发', duration: '2024-至今' }],
     project_experience: [{ name: 'AI面试系统', role: '核心开发', description: '基于大模型的模拟面试平台' }]
   }
   resumeId.value = '' // Quick start — no real resume, backend creates placeholder
   isQuickStart.value = true
-  skillEdited.value = false
-  config.position = defaultPosition
+  skillEdited.value = true  // mark as edited so position change doesn't auto-replace
+
+  // Lock to JD position if available, otherwise default
+  if (jdAnalysis.value && jdAnalysis.value.found_in_list) {
+    config.position = jdAnalysis.value.position
+    positionLocked.value = true
+  } else {
+    config.position = defaultPosition
+  }
   config.difficulty = '中级'
   config.mode = INTERVIEW_MODE.FULL
   config.selectedStages = []
   uploadState.value = 'done'
-  ElMessage.success('已加载示例简历，可直接开始面试体验')
+  ElMessage.success('已加载示例简历' + jdNotice + '，请根据个人实际情况修改技能标签')
 }
 
 // --- Load History ---
@@ -446,6 +566,57 @@ const guideSteps = steps
           </div>
         </section>
 
+        <!-- JD Input (optional) -->
+        <section class="card jd-section" v-if="showConfig">
+          <div class="section-header" @click="jdInputExpanded = !jdInputExpanded" style="cursor: pointer">
+            <h3>📋 补充招聘需求（可选）</h3>
+            <span class="section-hint">{{ jdInputExpanded ? '收起' : '展开' }}</span>
+          </div>
+          <template v-if="jdInputExpanded">
+            <p class="jd-hint">粘贴招聘JD，AI将针对JD要求的技术栈和职责出题</p>
+            <el-input
+              v-model="jdText"
+              type="textarea"
+              :rows="5"
+              :maxlength="JD_MAX_CHARS"
+              show-word-limit
+              :disabled="jdLocked"
+              placeholder="粘贴招聘JD内容...&#10;&#10;例如：&#10;岗位职责：&#10;1. 负责后端服务开发和维护&#10;2. 参与系统架构设计&#10;&#10;任职要求：&#10;1. 精通Python/Java，熟悉MySQL/Redis&#10;2. 有高并发系统开发经验"
+              @input="onJdInput"
+            />
+            <div class="jd-actions">
+              <el-button type="primary" size="small" :loading="jdAnalyzing" @click="analyzeJD" :disabled="!jdText.trim() || jdLocked">
+                分析JD
+              </el-button>
+              <el-button v-if="jdText || jdAnalysis" size="small" @click="clearJD">清空</el-button>
+            </div>
+            <div v-if="jdError" class="jd-error">{{ jdError }}</div>
+            <div v-if="jdAnalysis" class="jd-result">
+              <div class="jd-result-header">
+                <el-icon><Select /></el-icon>
+                分析结果
+              </div>
+              <div class="jd-result-item">
+                <span class="jd-label">岗位：</span>
+                <el-tag :type="jdAnalysis.found_in_list ? 'success' : 'warning'" size="small">
+                  {{ jdAnalysis.position }}
+                </el-tag>
+                <span v-if="!jdAnalysis.found_in_list" class="jd-note">（不在预设列表中，请手动选择）</span>
+              </div>
+              <div class="jd-result-item">
+                <span class="jd-label">技术栈：</span>
+                <el-tag v-for="sk in jdAnalysis.skills" :key="sk" size="small" type="info" style="margin-right: 4px; margin-bottom: 4px;">
+                  {{ sk }}
+                </el-tag>
+              </div>
+              <div class="jd-result-item" v-if="jdAnalysis.requirements?.length">
+                <span class="jd-label">职责要求：</span>
+                <span v-for="(req, i) in jdAnalysis.requirements" :key="i" class="jd-req">{{ i + 1 }}. {{ req }}</span>
+              </div>
+            </div>
+          </template>
+        </section>
+
         <section class="card config-section">
           <div class="section-header">
             <h3>第二步：配置面试</h3>
@@ -458,6 +629,8 @@ const guideSteps = steps
                 placeholder="请选择或搜索岗位"
                 filterable
                 style="width: 100%"
+                popper-class="position-select-popper"
+                :disabled="positionLocked"
               >
                 <el-option
                   v-for="pos in positionOptions"
@@ -714,6 +887,18 @@ const guideSteps = steps
   margin-top: 6px;
 }
 
+/* JD Input */
+.jd-section .section-header { margin-bottom: 8px; }
+.jd-hint { font-size: 12px; color: var(--color-text-secondary); margin-bottom: 12px; }
+.jd-actions { margin-top: 12px; display: flex; gap: 8px; align-items: center; }
+.jd-error { margin-top: 8px; color: var(--color-error); font-size: 12px; }
+.jd-result { margin-top: 12px; padding: 12px; background: var(--color-bg); border-radius: 4px; }
+.jd-result-header { font-size: 13px; font-weight: 500; color: var(--color-accent); margin-bottom: 8px; display: flex; align-items: center; gap: 4px; }
+.jd-result-item { margin-bottom: 6px; }
+.jd-label { font-size: 12px; color: var(--color-text-secondary); margin-right: 4px; }
+.jd-note { font-size: 11px; color: var(--color-warning); margin-left: 4px; }
+.jd-req { display: block; font-size: 12px; color: var(--color-text); margin-bottom: 2px; padding-left: 8px; }
+
 /* Active Banner */
 .active-banner {
   cursor: pointer;
@@ -900,5 +1085,15 @@ const guideSteps = steps
   .dashboard-page:not(.view-history) .history-section { display: none; }
   .dashboard-page:not(.view-history) .title-history { display: none; }
   .dashboard-page:not(.view-history) .title-default { display: block; }
+}
+</style>
+
+<style>
+/* 岗位下拉 - 双列布局 (非 scoped, 因为 el-select 下拉是 teleport 到 body) */
+.position-select-popper .el-select-dropdown__list {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px 4px;
+  padding: 4px;
 }
 </style>

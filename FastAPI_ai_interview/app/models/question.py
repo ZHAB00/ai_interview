@@ -29,6 +29,10 @@ class Question(Base):
     follow_up_hints: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
     tags: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
     skill_tags: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+    source: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="manual", server_default="manual", index=True
+    )
+    source_interview_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     is_deleted: Mapped[bool] = mapped_column(Integer, default=0, index=True)
     created_by: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("users.id"), nullable=True, index=True

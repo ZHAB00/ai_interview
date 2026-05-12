@@ -13,7 +13,8 @@ const filters = reactive({
   stage: '',
   position: '',
   difficulty: '',
-  type: ''
+  type: '',
+  source: ''
 })
 
 // Dialog
@@ -59,6 +60,7 @@ async function loadList() {
     if (filters.position) params.position = filters.position
     if (filters.difficulty) params.difficulty = filters.difficulty
     if (filters.type) params.type = filters.type
+    if (filters.source) params.source = filters.source
 
     const { data } = await getQuestions(params)
     list.value = data.items || []
@@ -216,6 +218,10 @@ onMounted(loadList)
       <el-select v-model="filters.type" placeholder="题型" clearable size="small" style="width: 110px">
         <el-option v-for="t in typeOptions" :key="t.value" :label="t.label" :value="t.value" />
       </el-select>
+      <el-select v-model="filters.source" placeholder="来源" clearable size="small" style="width: 100px">
+        <el-option label="手动录入" value="manual" />
+        <el-option label="AI生成" value="auto" />
+      </el-select>
       <el-input v-model="filters.position" placeholder="岗位关键词" clearable size="small" style="width: 160px" />
       <el-button size="small" @click="handleFilter">筛选</el-button>
     </div>
@@ -233,6 +239,13 @@ onMounted(loadList)
       <el-table-column label="难度" prop="difficulty" width="60" />
       <el-table-column label="题型" width="80">
         <template #default="{ row }">{{ questionTypeLabel(row.type) }}</template>
+      </el-table-column>
+      <el-table-column label="来源" width="70">
+        <template #default="{ row }">
+          <el-tag :type="row.source === 'auto' ? 'success' : 'info'" size="small">
+            {{ row.source === 'auto' ? 'AI' : '手动' }}
+          </el-tag>
+        </template>
       </el-table-column>
       <el-table-column label="题目" min-width="200">
         <template #default="{ row }">{{ questionTextSummary(row.question_text) }}</template>

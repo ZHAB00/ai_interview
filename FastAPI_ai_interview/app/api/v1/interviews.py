@@ -21,6 +21,7 @@ from app.schemas.interview import (
     CreateInterviewResponse,
     InterviewHistoryItem,
     InterviewHistoryResponse,
+    JDAnalyzeRequest,
     ReportStatusResponse,
 )
 
@@ -86,6 +87,45 @@ async def _trim_history(user_id: int, db: AsyncSession):
         for rec in old_result.scalars().all():
             rec.deleted_at = datetime.now(timezone.utc)
             logger.info(f"软删除超限记录: interview_id={rec.id}")
+
+
+@router.post("/analyze-jd", response_model=dict)
+async def analyze_jd(
+    req: "JDAnalyzeRequest",
+    current_user: User = Depends(get_current_user),
+):
+    """分析招聘JD：提取岗位和技能要求。"""
+    from app.agents.base import BaseAgent
+
+    class JDAgent(BaseAgent):
+        @property
+        def system_prompt(self) -> str:
+            return (
+                "你是一个招聘需求分析专家。从JD中提取关键信息。\n"
+                "请严格按照 JSON 格式返回：\n"
+                '{"position": "岗位名称", "skills": ["技能1", "技能2"], '
+                '"requirements": ["职责要求1", "职责要求2"]}\n'
+                "skills 仅包含具体技术栈（如Python/MySQL/K8s），英文，不超过10个。\n"
+                "若JD中有'至少掌握其中一种'的条件，skills中只列出即可，"
+                "同时在requirements的第一条标注为'条件满足：掌握X/Y/Z中至少一种'。\n"
+                "requirements 为核心职责/经验要求，中文，不超过5条。\n"
+                "position 为最匹配的岗位名称（中文，如'后端开发工程师'）。"
+            )
+
+    try:
+        agent = JDAgent()
+        result = await agent.llm_call_json([{
+            "role": "user",
+            "content": f"请分析以下招聘JD：\n\n{req.jd_text[:3000]}",
+        }])
+        return {
+            "position": result.get("position", ""),
+            "skills": result.get("skills", []),
+            "requirements": result.get("requirements", []),
+        }
+    except Exception as e:
+        logger.error(f"JD分析失败: {e}", exc_info=True)
+        raise ValidationErrorException("JD分析失败，请检查文本后重试")
 
 
 @router.post("", response_model=CreateInterviewResponse, status_code=201)
@@ -159,6 +199,8 @@ async def create_interview(
         difficulty=req.difficulty,
         mode=req.mode,
         selected_stages=req.selected_stages or ["初筛", "HR面", "技术面", "终面"],
+        jd_text=req.jd_text[:3000] if req.jd_text else None,
+        jd_analysis=req.jd_analysis,
         status="created",
     )
     db.add(interview)

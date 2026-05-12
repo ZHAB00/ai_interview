@@ -28,6 +28,8 @@ class Interview(Base):
         Enum("full", "stage"), nullable=False
     )
     selected_stages: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+    jd_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    jd_analysis: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     status: Mapped[str] = mapped_column(
         Enum("created", "in_progress", "completed", "abandoned"),
         nullable=False,

@@ -39,6 +39,8 @@ async def create_question(
         sample_answer=req.sample_answer,
         follow_up_hints=req.follow_up_hints,
         tags=req.tags,
+        skill_tags=req.skill_tags or [],
+        source=req.source,
         created_by=current_user.id,
     )
     db.add(question)
@@ -54,6 +56,7 @@ async def list_questions(
     stage: str | None = None,
     position: str | None = None,
     difficulty: str | None = None,
+    source: str | None = None,
     page: int = 1,
     page_size: int = 20,
     current_user: User = Depends(get_current_admin),
@@ -74,6 +77,9 @@ async def list_questions(
         # Search in position_tags JSON array
         query = query.where(Question.position_tags.contains(position))
         count_query = count_query.where(Question.position_tags.contains(position))
+    if source:
+        query = query.where(Question.source == source)
+        count_query = count_query.where(Question.source == source)
 
     total_result = await db.execute(count_query)
     total = total_result.scalar() or 0
@@ -98,6 +104,9 @@ async def list_questions(
             sample_answer=q.sample_answer,
             follow_up_hints=q.follow_up_hints,
             tags=q.tags,
+            skill_tags=q.skill_tags,
+            source=getattr(q, 'source', 'manual'),
+            source_interview_id=getattr(q, 'source_interview_id', None),
             is_deleted=bool(q.is_deleted),
             created_by=q.created_by,
             created_at=q.created_at,
@@ -178,6 +187,8 @@ async def batch_create_questions(
                 sample_answer=req.sample_answer,
                 follow_up_hints=req.follow_up_hints,
                 tags=req.tags,
+                skill_tags=req.skill_tags or [],
+                source=req.source,
                 created_by=current_user.id,
             )
             db.add(question)

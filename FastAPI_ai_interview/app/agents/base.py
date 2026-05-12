@@ -1,11 +1,11 @@
-"""Base agent class with LLM call abstraction."""
+"""Base agent class with LLM call abstraction — powered by LangChain."""
 
 import json
 import logging
 from abc import ABC, abstractmethod
 from typing import Any
 
-from openai import AsyncOpenAI
+from langchain_openai import ChatOpenAI
 
 from app.core.config import settings
 from app.core.logging_config import truncate
@@ -45,11 +45,13 @@ class BaseAgent(ABC):
     """
 
     def __init__(self):
-        self.client = AsyncOpenAI(
+        self.client = ChatOpenAI(
             api_key=settings.DEEPSEEK_API_KEY,
             base_url=settings.DEEPSEEK_API_BASE,
+            model=settings.LLM_MODEL,
+            temperature=0.7,
+            max_tokens=4096,
         )
-        self.model = settings.LLM_MODEL
 
     @property
     @abstractmethod
@@ -68,22 +70,20 @@ class BaseAgent(ABC):
         last_user_msg = messages[-1]["content"] if messages else ""
         full_messages = [{"role": "system", "content": self.system_prompt}] + messages
         logger.debug(
-            f"LLM调用开始: model={self.model}, msg_count={len(full_messages)}, "
+            f"LLM调用开始: model={settings.LLM_MODEL}, msg_count={len(full_messages)}, "
             f"prompt_preview={truncate(last_user_msg)}"
         )
 
         try:
-            kwargs = {
-                "model": self.model,
-                "messages": full_messages,
+            invoke_kwargs = {
                 "temperature": temperature,
                 "max_tokens": max_tokens,
             }
             if response_format:
-                kwargs["response_format"] = response_format
+                invoke_kwargs["response_format"] = response_format
 
-            response = await self.client.chat.completions.create(**kwargs)
-            content = response.choices[0].message.content or ""
+            response = await self.client.ainvoke(full_messages, **invoke_kwargs)
+            content = response.content or ""
             logger.debug(f"LLM响应: len={len(content)}, preview={truncate(content)}")
             return content
         except Exception as e:

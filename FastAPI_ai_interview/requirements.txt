@@ -14,7 +14,8 @@ alembic==1.14.0
 slowapi==0.1.9
 redis==5.2.1
 httpx==0.28.1
-openai==1.58.1
+langchain-openai>=0.2.0,<0.4.0
+langgraph>=0.2.0,<0.4.0
 python-docx==1.1.2
 pypdf==5.1.0
 pytesseract==0.3.13

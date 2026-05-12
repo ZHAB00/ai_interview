@@ -72,6 +72,9 @@ class RAGService:
             # Difficulty exact match bonus: 3 points
             if difficulty and q.difficulty == difficulty:
                 score += 3
+            # Source priority: prefer manually curated questions
+            if getattr(q, 'source', 'manual') == 'manual':
+                score += 20
             scored.append((score, q))
 
         scored.sort(key=lambda x: x[0], reverse=True)

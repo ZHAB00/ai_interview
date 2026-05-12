@@ -22,6 +22,8 @@ class CreateQuestionRequest(BaseModel):
     sample_answer: str | None = None
     follow_up_hints: list[str] | None = None
     tags: list[str] | None = None
+    skill_tags: list[str] | None = None
+    source: str = "manual"
 
 
 class UpdateQuestionRequest(BaseModel):
@@ -35,6 +37,7 @@ class UpdateQuestionRequest(BaseModel):
     sample_answer: str | None = None
     follow_up_hints: list[str] | None = None
     tags: list[str] | None = None
+    skill_tags: list[str] | None = None
 
 
 class QuestionResponse(BaseModel):
@@ -49,6 +52,9 @@ class QuestionResponse(BaseModel):
     sample_answer: str | None = None
     follow_up_hints: list[str] | None = None
     tags: list[str] | None = None
+    skill_tags: list[str] | None = None
+    source: str = "manual"
+    source_interview_id: int | None = None
     is_deleted: bool = False
     created_by: int | None = None
     created_at: datetime

@@ -51,6 +51,7 @@ class ReportAgent(BaseAgent):
         position_match_score: int | None = None,
         match_feedback: str | None = None,
         stage_summaries: list[dict] | None = None,
+        jd_analysis: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Generate the full interview report."""
         logger.info(f"开始生成报告: position={position}, answer_count={len(answers)}")
@@ -71,6 +72,26 @@ class ReportAgent(BaseAgent):
                 f"匹配反馈：{match_feedback or '无'}\n"
             )
 
+        # JD match context
+        jd_info = ""
+        if jd_analysis:
+            jd_skills = jd_analysis.get("skills", [])
+            jd_reqs = jd_analysis.get("requirements", [])
+            if jd_skills or jd_reqs:
+                jd_info = "\n【招聘JD要求】\n"
+                if jd_skills:
+                    jd_info += f"要求技术栈：{', '.join(jd_skills)}\n"
+                if jd_reqs:
+                    jd_info += f"职责要求：{'；'.join(jd_reqs)}\n"
+                jd_info += (
+                    "请在报告中补充一个 'jd_match' 字段，包含：\n"
+                    "- covered_skills: 候选人掌握并正确回答的JD技能\n"
+                    "- missed_skills: JD要求但候选人明显不熟悉的技能\n"
+                    "  注意：若JD中某些技能是'至少掌握一种'的条件，"
+                    "候选人满足其中一种即视为覆盖，未涉及的其他技能不算遗漏。\n"
+                    "- jd_match_score: 候选人对JD要求的整体匹配度(0-100)\n"
+                )
+
         stage_info = ""
         if stage_summaries:
             stage_info = "面试阶段评价：\n" + "\n".join(
@@ -84,6 +105,7 @@ class ReportAgent(BaseAgent):
                 f"岗位：{position}\n"
                 f"难度：{difficulty}\n"
                 f"{match_info}"
+                f"{jd_info}"
                 f"{stage_info}\n"
                 f"各题回答及评分：\n{answers_summary}\n\n"
                 f"请基于以上信息生成面试报告摘要，包括总体评价、各阶段总结、"

@@ -89,10 +89,9 @@ onMounted(async () => {
   const interviewId = route.params.id
   if (!interviewId) return
 
+  // Always refresh token on mount — stored token may have expired
   let wsToken = sessionStorage.getItem('ws_token')
   let wsPath = sessionStorage.getItem('ws_url')
-
-  // Always refresh token on mount — stored token may have expired
   try {
     const { reconnectInterview } = await import('../services/interviewService.js')
     const { data } = await reconnectInterview(interviewId)
@@ -101,7 +100,7 @@ onMounted(async () => {
     sessionStorage.setItem('ws_token', wsToken)
     sessionStorage.setItem('ws_url', wsPath)
   } catch {
-    // Fallback to stored token if reconnect API fails
+    // Reconnect failed — fall back to stored token (fresh interview) or redirect
     if (!wsToken || !wsPath) {
       ElMessage.error('无法恢复面试，请返回首页重新开始')
       router.push('/dashboard')

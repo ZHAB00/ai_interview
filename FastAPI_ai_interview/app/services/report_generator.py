@@ -73,6 +73,7 @@ class ReportGenerator:
             answers=text_answers,
             position_match_score=match_score,
             match_feedback=match_fb,
+            jd_analysis=interview.jd_analysis,
         )
 
         # Build stage breakdown
@@ -142,6 +143,22 @@ class ReportGenerator:
 
         await self.db.commit()
         logger.info(f"报告生成完成: interview_id={interview_id}, score={final_score}")
+
+        # Auto-feedback: save high-quality LLM questions back to question bank
+        try:
+            from app.services.question_feedback_service import QuestionFeedbackService
+            feedback_svc = QuestionFeedbackService(self.db)
+            saved = await feedback_svc.maybe_save_questions(
+                interview_id=interview_id,
+                conversation=answers if isinstance(answers, list) else [],
+                position=interview.position,
+                difficulty=interview.difficulty,
+                overall_score=final_score,
+            )
+            if saved > 0:
+                logger.info(f"题库回写: interview_id={interview_id}, saved={saved} questions")
+        except Exception as e:
+            logger.error(f"题库回写失败: {e}", exc_info=True)
 
         return report
 

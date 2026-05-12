@@ -220,4 +220,9 @@ onUnmounted(() => clearInterval(countdownTimer))
 .step-item.done .step-num { border-color: #67C23A; background: #67C23A; color: #fff; }
 .step-line { width: 32px; height: 2px; background: var(--color-border); margin: 0 4px; }
 .step-line.done { background: #67C23A; }
+
+@media (max-width: 768px) {
+  .auth-page { padding: 24px 16px; align-items: flex-start; padding-top: 40px; }
+  .auth-card { width: 100%; padding: 24px 20px; }
+}
 </style>

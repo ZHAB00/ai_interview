@@ -5,7 +5,7 @@ const emit = defineEmits(['close'])
 const visible = ref(false)
 
 onMounted(() => {
-  const shown = localStorage.getItem('guide_shown')
+  const shown = sessionStorage.getItem('guide_shown')
   if (!shown) {
     visible.value = true
   }
@@ -13,13 +13,13 @@ onMounted(() => {
 
 function handleClose() {
   visible.value = false
-  localStorage.setItem('guide_shown', '1')
+  sessionStorage.setItem('guide_shown', '1')
   emit('close')
 }
 </script>
 
 <template>
-  <el-dialog v-model="visible" title="欢迎使用 AI面试官" width="480px" :close-on-click-modal="false">
+  <el-dialog v-model="visible" title="欢迎使用 AI面试官" width="480px" :close-on-click-modal="false" class="guide-dialog">
     <div class="guide-body">
       <div class="guide-step" v-for="(step, idx) in steps" :key="idx">
         <span class="step-num">{{ idx + 1 }}</span>
@@ -37,10 +37,11 @@ function handleClose() {
 
 <script>
 export const steps = [
-  { title: '上传简历', desc: '支持 PDF、Word、图片格式，系统自动解析简历信息' },
+  { title: '上传简历', desc: '支持 PDF、Word 格式，系统自动解析简历信息' },
+  { title: '补充JD（可选）', desc: '粘贴招聘JD，AI将针对JD要求的技术栈和职责针对出题，面试结果更贴近真实岗位需求' },
   { title: '配置面试', desc: '选择目标岗位、难度和面试模式，系统智能匹配合适的题目' },
   { title: '开始对话', desc: '与AI面试官进行实时语音对话，模拟真实面试场景' },
-  { title: '查看报告', desc: '面试结束后获取能力画像、综合评语和错误解析报告' }
+  { title: '查看报告', desc: '面试结束后获取能力画像、综合评语和JD匹配度分析报告' }
 ]
 </script>
 
@@ -80,14 +81,15 @@ export const steps = [
   margin-top: 2px;
 }
 @media (max-width: 768px) {
-  .guide-card {
-    width: 90vw;
-    max-width: 360px;
-    padding: 20px 16px;
-  }
-  .guide-title { font-size: 18px; }
-  .guide-desc { font-size: 13px; }
-  .guide-steps { gap: 12px; }
   .guide-step { font-size: 12px; }
+}
+</style>
+
+<style>
+@media (max-width: 768px) {
+  .guide-dialog {
+    width: 90vw !important;
+    max-width: 360px;
+  }
 }
 </style>

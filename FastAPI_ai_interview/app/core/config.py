@@ -63,6 +63,7 @@ class Settings(BaseSettings):
 
     # Interview
     INTERVIEW_MAX_DURATION: int = 2700  # 45 minutes in seconds
+    USE_LANGGRAPH_ORCHESTRATOR: bool = False  # toggle LangGraph orchestrator
 
     # STT/TTS — DashScope (Qwen-ASR-Realtime / Qwen-TTS-Realtime)
     STT_PROVIDER: str = "dashscope"

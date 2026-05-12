@@ -129,6 +129,7 @@ class InterviewerAgent(BaseAgent):
             '  "action": "ask_question" | "follow_up" | "stage_complete",\n'
             '  "message": "对候选人说的话（面试官语气）",\n'
             '  "question_text": "下一个问题（action=ask_question 时必填）",\n'
+            '  "skill_tags": ["题目涉及的技术栈/技能名"],\n'
             '  "follow_up_reason": "追问原因（action=follow_up 时填写）",\n'
             '  "stage_summary": "阶段简短总结（action=stage_complete 时填写）",\n'
             '  "question_count_in_stage": 当前阶段已问问题数\n'
@@ -145,11 +146,13 @@ class InterviewerAgent(BaseAgent):
         top_skills: list[str] | None = None,
         projects: list[dict] | None = None,
         examples: list[dict] | None = None,
+        jd_analysis: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Generate the first question for a new stage, driven by resume content.
 
         Args:
             examples: Few-shot examples from question bank for reference style/quality.
+            jd_analysis: JD analysis result with skills/requirements for targeted questions.
         """
         self._stage = stage
         self._cfg = STAGE_CONFIG.get(stage, STAGE_CONFIG["初筛"])
@@ -174,6 +177,22 @@ class InterviewerAgent(BaseAgent):
                 if ex.get("follow_up_hints"):
                     examples_str += f"  追问方向: {'; '.join(ex['follow_up_hints'][:2])}\n"
 
+        # JD context — prioritize company requirements over resume self-reported skills
+        jd_str = ""
+        if jd_analysis:
+            jd_skills = jd_analysis.get("skills", [])
+            jd_reqs = jd_analysis.get("requirements", [])
+            if jd_skills or jd_reqs:
+                jd_str = "\n\n【招聘JD要求 — 出题优先级最高】\n"
+                if jd_skills:
+                    jd_str += f"必须考察的技术栈：{', '.join(jd_skills)}\n"
+                if jd_reqs:
+                    jd_str += f"岗位职责要求：{'；'.join(jd_reqs)}\n"
+                jd_str += (
+                    "请优先围绕JD要求的技术栈和职责出题。候选人简历技能作为辅助参考。\n"
+                    "如果候选人表示不了解JD中要求的某项技术，不要追问第二次，直接跳过换其他方向。"
+                )
+
         messages = [{
             "role": "user",
             "content": (
@@ -181,6 +200,7 @@ class InterviewerAgent(BaseAgent):
                 f"岗位：{position}\n"
                 f"难度：{difficulty}\n"
                 f"候选人核心技能：{skill_str}{project_str}"
+                f"{jd_str}"
                 f"{examples_str}\n\n"
                 f"{cfg['question_guide']}\n\n"
                 f"请以面试官身份开始【{stage}】阶段，action 应为 ask_question，question_count_in_stage 为 1。"
@@ -204,6 +224,7 @@ class InterviewerAgent(BaseAgent):
         question_count: int,
         max_questions: int | None = None,
         follow_up_count: int = 0,
+        jd_analysis: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Evaluate answer with stage-specific strictness and follow-up strategy."""
         self._stage = stage
@@ -222,6 +243,16 @@ class InterviewerAgent(BaseAgent):
                 f"只剩 {remaining} 轮追问额度。如果回答不够深入，请直接 ask_question 换题或 stage_complete 结束，不要继续追问。\n"
             )
 
+        # JD context for evaluation
+        jd_str = ""
+        if jd_analysis:
+            jd_skills = jd_analysis.get("skills", [])
+            if jd_skills:
+                jd_str = (
+                    f"\n招聘JD要求技术栈：{', '.join(jd_skills)}\n"
+                    "如果候选人表示不了解JD中的某项技术，不要追问，直接 skip 换方向。"
+                )
+
         messages = [{
             "role": "user",
             "content": (
@@ -231,7 +262,8 @@ class InterviewerAgent(BaseAgent):
                 f"当前问题：{question_text}\n"
                 f"候选人回答：{user_answer}\n"
                 f"已问问题数：{question_count}/{max_questions}\n"
-                f"当前问题已追问：{follow_up_count}/{cfg['max_follow_ups']} 轮{limit_warning}\n"
+                f"当前问题已追问：{follow_up_count}/{cfg['max_follow_ups']} 轮{limit_warning}"
+                f"{jd_str}\n"
                 f"{cfg['evaluate_guide']}\n\n"
                 f"请评估候选人的回答质量，严格按阶段要求决定下一步。"
             ),

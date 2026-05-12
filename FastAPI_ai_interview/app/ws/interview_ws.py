@@ -19,7 +19,12 @@ from app.core.database import SessionLocal
 from app.core.security import decode_token
 from app.models.interview import Interview
 from app.models.user import User
-from app.services.interview_orchestrator import InterviewOrchestrator, OrchestratorState
+
+if settings.USE_LANGGRAPH_ORCHESTRATOR:
+    from app.services.langgraph_orchestrator import LangGraphOrchestrator as Orchestrator, OrchestratorState
+else:
+    from app.services.interview_orchestrator import InterviewOrchestrator as Orchestrator, OrchestratorState
+
 from app.ws.audio_handler import AudioHandler
 from app.ws.session_manager import session_manager
 
@@ -83,7 +88,7 @@ async def interview_handler(websocket: WebSocket, interview_id: int, token: str)
             await websocket.close(code=4004, reason="简历不存在")
             return
 
-        orchestrator = InterviewOrchestrator(interview=interview, resume=resume, db=db)
+        orchestrator = Orchestrator(interview=interview, resume=resume, db=db)
 
         # Accept connection
         await websocket.accept()
