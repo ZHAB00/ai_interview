@@ -380,7 +380,12 @@ async function deleteInterviewItem(iv) {
     await interviewService.deleteInterview(iv.interview_id)
     ElMessage.success('已删除')
     loadHistory(historyPage.value)
-  } catch { /* cancelled */ }
+  } catch (e) {
+    if (e !== 'cancel' && e !== 'close') {
+      const msg = e.response?.data?.error?.message || '删除失败'
+      ElMessage.error(msg)
+    }
+  }
 }
 
 async function continueInterview() {
