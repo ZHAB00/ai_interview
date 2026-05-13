@@ -335,7 +335,7 @@ function handleLogout() {
     </nav>
 
     <!-- Invite Code Dialog -->
-    <el-dialog v-model="inviteDialog" title="内测邀请码" width="380px" :close-on-click-modal="false" @close="closeInviteDialog" class="invite-dialog">
+    <el-dialog v-model="inviteDialog" title="内测邀请码" width="360px" :close-on-click-modal="false" @close="closeInviteDialog" class="invite-dialog">
       <div class="invite-dialog-body">
         <!-- Section 1: rotating code -->
         <div class="invite-section">
@@ -667,29 +667,15 @@ function handleLogout() {
 
 /* mobile dialog */
 @media (max-width: 768px) {
-  .invite-dialog {
-    --el-dialog-width: 95vw !important;
-    max-width: 340px;
-  }
   .invite-dialog :deep(.el-dialog__body) {
-    padding: 10px 8px;
+    padding: 12px 14px;
   }
   .timed-code {
     font-size: 16px;
     letter-spacing: 2px;
   }
   .timed-form {
-    gap: 4px;
-  }
-  .timed-form-item label {
-    font-size: 11px;
-  }
-  .timed-form-item .el-select {
-    width: 62px !important;
-  }
-  .timed-gen-btn {
-    font-size: 12px !important;
-    padding: 6px 10px !important;
+    gap: 6px;
   }
 }
 </style>
@@ -698,5 +684,16 @@ function handleLogout() {
 /* el-select popper teleported to body — dialog z-index is 2000+, dropdown must sit above it */
 .invite-popper {
   z-index: 9999 !important;
+}
+
+@media (max-width: 768px) {
+  .invite-dialog {
+    width: 88vw !important;
+    max-width: 300px !important;
+  }
+  .timed-form {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
 }
 </style>
