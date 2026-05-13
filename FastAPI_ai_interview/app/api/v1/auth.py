@@ -75,8 +75,12 @@ async def register(req: RegisterRequest, db: AsyncSession = Depends(get_db)):
 
     # Step 2: Validate invite code — DB timed codes first (authoritative), HMAC fallback
     code = req.invite_code.strip().upper()
+    logger.info(f"[DEBUG-REGISTER] invite_code input='{code}' (len={len(code)})")
     result = await db.execute(select(InviteCode).where(InviteCode.code == code))
     invite = result.scalar_one_or_none()
+    logger.info(f"[DEBUG-REGISTER] DB result: found={invite is not None}, is_active={invite.is_active if invite else 'N/A'}")
+    hmac_ok = validate_invite_code(code)
+    logger.info(f"[DEBUG-REGISTER] HMAC valid: {hmac_ok}")
 
     if invite is not None:
         if not invite.is_active:
