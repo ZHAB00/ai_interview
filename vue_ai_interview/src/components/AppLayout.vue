@@ -149,6 +149,7 @@ async function fetchInviteCode() {
 
 function openInviteDialog() {
   fetchInviteCode()
+  fetchTimedCodes()
   inviteDialog.value = true
   clearInterval(countdownTimer)
   countdownTimer = setInterval(() => {
@@ -170,6 +171,97 @@ function copyInviteCode() {
   navigator.clipboard.writeText(inviteCode.value).then(() => {
     ElMessage.success('邀请码已复制')
   })
+}
+
+// --- Timed Invite Codes ---
+const timedCodes = ref([])
+const duration = ref(2)
+const maxUses = ref(5)
+const generating = ref(false)
+
+const durationOptions = [
+  { label: '30分钟', value: 0.5 },
+  { label: '1小时', value: 1 },
+  { label: '2小时', value: 2 },
+  { label: '6小时', value: 6 },
+  { label: '12小时', value: 12 },
+  { label: '1天', value: 24 },
+  { label: '3天', value: 72 },
+  { label: '7天', value: 168 },
+  { label: '30天', value: 720 },
+]
+
+const maxUsesOptions = [
+  { label: '1次', value: 1 },
+  { label: '3次', value: 3 },
+  { label: '5次', value: 5 },
+  { label: '10次', value: 10 },
+  { label: '50次', value: 50 },
+  { label: '不限', value: 0 },
+]
+
+async function fetchTimedCodes() {
+  try {
+    const { data } = await api.get('/api/admin/invite-codes')
+    timedCodes.value = data.items || []
+  } catch { timedCodes.value = [] }
+}
+
+async function generateTimedCode() {
+  generating.value = true
+  try {
+    await api.post('/api/admin/invite-codes', {
+      duration_hours: duration.value,
+      max_uses: maxUses.value || null,
+    })
+    ElMessage.success('邀请码已生成')
+    await fetchTimedCodes()
+  } catch (e) {
+    ElMessage.error(e.response?.data?.error?.message || '生成失败')
+  } finally {
+    generating.value = false
+  }
+}
+
+async function copyTimedCode(code) {
+  await navigator.clipboard.writeText(code)
+  ElMessage.success('邀请码已复制')
+}
+
+async function deactivateTimedCode(id) {
+  try {
+    await api.delete(`/api/admin/invite-codes/${id}`)
+    ElMessage.success('邀请码已删除')
+    await fetchTimedCodes()
+  } catch (e) {
+    ElMessage.error(e.response?.data?.error?.message || '删除失败')
+  }
+}
+
+function isExpired(c) {
+  return new Date(c.expires_at) < new Date()
+}
+
+function isExhausted(c) {
+  return c.max_uses !== null && c.use_count >= c.max_uses
+}
+
+function codeStatus(c) {
+  if (!c.is_active) return '已停用'
+  if (isExpired(c)) return '已过期'
+  if (isExhausted(c)) return '已用完'
+  if (c.max_uses) return `${c.use_count}/${c.max_uses}次`
+  return `${c.use_count}次使用`
+}
+
+function expiresFormat(iso) {
+  if (!iso) return ''
+  const d = new Date(iso)
+  const m = d.getMonth() + 1
+  const day = d.getDate()
+  const h = String(d.getHours()).padStart(2, '0')
+  const min = String(d.getMinutes()).padStart(2, '0')
+  return `${m}-${day} ${h}:${min}到期`
 }
 
 onUnmounted(() => clearInterval(countdownTimer))
@@ -243,18 +335,61 @@ function handleLogout() {
     </nav>
 
     <!-- Invite Code Dialog -->
-    <el-dialog v-model="inviteDialog" title="内测邀请码" width="380px" :close-on-click-modal="false" @close="closeInviteDialog">
+    <el-dialog v-model="inviteDialog" title="内测邀请码" width="380px" :close-on-click-modal="false" @close="closeInviteDialog" class="invite-dialog">
       <div class="invite-dialog-body">
-        <div class="invite-code-display">{{ inviteCode }}</div>
-        <div class="invite-countdown">
-          <span class="countdown-dot" />
-          {{ countdown }}
+        <!-- Section 1: rotating code -->
+        <div class="invite-section">
+          <div class="invite-section-title">动态轮换码</div>
+          <div class="invite-code-display">{{ inviteCode }}</div>
+          <div class="invite-countdown">
+            <span class="countdown-dot" />
+            {{ countdown }}
+          </div>
+          <div class="invite-actions">
+            <el-button type="primary" size="small" @click="copyInviteCode">复制邀请码</el-button>
+            <el-button size="small" text @click="fetchInviteCode">立即刷新</el-button>
+          </div>
+          <p class="invite-tip">同一窗口内上一个码也有效（15分钟容错）</p>
         </div>
-        <div class="invite-actions">
-          <el-button type="primary" @click="copyInviteCode">复制邀请码</el-button>
-          <el-button text @click="fetchInviteCode">立即刷新</el-button>
+
+        <el-divider />
+
+        <!-- Section 2: timed codes -->
+        <div class="invite-section">
+          <div class="invite-section-title">生成限时邀请码</div>
+          <div class="timed-form">
+            <div class="timed-form-item">
+              <label>有效期</label>
+              <el-select v-model="duration" size="small">
+                <el-option v-for="o in durationOptions" :key="o.value" :label="o.label" :value="o.value" />
+              </el-select>
+            </div>
+            <div class="timed-form-item">
+              <label>次数</label>
+              <el-select v-model="maxUses" size="small">
+                <el-option v-for="o in maxUsesOptions" :key="o.value" :label="o.label" :value="o.value" />
+              </el-select>
+            </div>
+            <el-button type="primary" size="small" :loading="generating" @click="generateTimedCode" class="timed-gen-btn">
+              {{ generating ? '生成中...' : '生成' }}
+            </el-button>
+          </div>
+
+          <!-- Timed code list -->
+          <div v-if="timedCodes.length" class="timed-list">
+            <div v-for="c in timedCodes" :key="c.id" class="timed-item" :class="{ 'timed-item--dead': isExpired(c) || isExhausted(c) || !c.is_active }">
+              <div class="timed-code">{{ c.code }}</div>
+              <div class="timed-meta">
+                <span class="timed-status" :class="{ 'timed-status--dead': isExpired(c) || isExhausted(c) || !c.is_active }">{{ codeStatus(c) }}</span>
+                <span class="timed-expires">{{ expiresFormat(c.expires_at) }}</span>
+              </div>
+              <div class="timed-item-actions">
+                <el-button size="small" text @click="copyTimedCode(c.code)">复制</el-button>
+                <el-button size="small" text type="danger" @click="deactivateTimedCode(c.id)">删除</el-button>
+              </div>
+            </div>
+          </div>
         </div>
-        <p class="invite-tip">同一窗口内上一个码也有效（15分钟容错）</p>
       </div>
     </el-dialog>
   </div>
@@ -439,6 +574,111 @@ function handleLogout() {
   .tab-label {
     font-size: 10px;
     line-height: 1;
+  }
+}
+
+/* invite dialog — timed codes */
+.invite-dialog :deep(.el-dialog__body) {
+  max-height: 65vh;
+  overflow-y: auto;
+  padding: 16px 20px;
+}
+
+.invite-section {
+  text-align: center;
+}
+.invite-section-title {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  margin-bottom: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+/* timed form */
+.timed-form {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.timed-form-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.timed-form-item label {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+.timed-gen-btn {
+  flex-shrink: 0;
+}
+
+/* timed list */
+.timed-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.timed-item {
+  background: var(--color-bg);
+  border-radius: 8px;
+  padding: 10px 12px;
+  text-align: left;
+}
+.timed-item--dead {
+  opacity: 0.45;
+}
+.timed-code {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  color: var(--color-accent);
+  font-family: 'Courier New', monospace;
+  margin-bottom: 4px;
+}
+.timed-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.timed-status {
+  font-size: 11px;
+  color: #67C23A;
+}
+.timed-status--dead {
+  color: var(--color-text-secondary);
+}
+.timed-expires {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+}
+.timed-item-actions {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+}
+
+/* mobile dialog */
+@media (max-width: 768px) {
+  .invite-dialog {
+    --el-dialog-width: 90vw !important;
+    max-width: 380px;
+  }
+  .invite-dialog :deep(.el-dialog__body) {
+    padding: 12px 14px;
+  }
+  .timed-code {
+    font-size: 16px;
+    letter-spacing: 2px;
+  }
+  .timed-form {
+    gap: 6px;
   }
 }
 </style>
