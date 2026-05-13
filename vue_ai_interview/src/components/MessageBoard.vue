@@ -101,7 +101,7 @@ function fmtTime(iso) {
       <div class="msg-list" ref="listRef" v-if="messages.length">
         <div v-for="m in messages" :key="m.id" class="msg-item"
           :class="{ 'msg-item--pressing': pressingId === m.id }"
-          @touchstart="startPress(m)" @touchend="cancelPress" @touchmove="cancelPress"
+          @touchstart.passive="startPress(m)" @touchend="cancelPress" @touchmove.passive="cancelPress"
           @mousedown="startPress(m)" @mouseup="cancelPress" @mouseleave="cancelPress">
           <div class="msg-meta">
             <span class="msg-user">

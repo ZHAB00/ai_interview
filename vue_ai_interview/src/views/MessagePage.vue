@@ -106,7 +106,7 @@ onMounted(loadMessages)
 
       <div v-for="m in messages" :key="m.id" class="mp-item"
         :class="{ 'mp-item--pressing': pressingId === m.id }"
-        @touchstart="startPress(m)" @touchend="cancelPress" @touchmove="cancelPress"
+        @touchstart.passive="startPress(m)" @touchend="cancelPress" @touchmove.passive="cancelPress"
         @mousedown="startPress(m)" @mouseup="cancelPress" @mouseleave="cancelPress">
         <div class="mp-avatar">{{ m.username.charAt(0) }}</div>
         <div class="mp-body">
