@@ -360,13 +360,13 @@ function handleLogout() {
           <div class="timed-form">
             <div class="timed-form-item">
               <label>有效期</label>
-              <el-select v-model="duration" size="small">
+              <el-select v-model="duration" size="small" popper-class="invite-popper" teleported>
                 <el-option v-for="o in durationOptions" :key="o.value" :label="o.label" :value="o.value" />
               </el-select>
             </div>
             <div class="timed-form-item">
               <label>次数</label>
-              <el-select v-model="maxUses" size="small">
+              <el-select v-model="maxUses" size="small" popper-class="invite-popper" teleported>
                 <el-option v-for="o in maxUsesOptions" :key="o.value" :label="o.label" :value="o.value" />
               </el-select>
             </div>
@@ -681,5 +681,12 @@ function handleLogout() {
   .timed-form {
     gap: 6px;
   }
+}
+</style>
+
+<style>
+/* el-select popper teleported to body — dialog z-index is 2000+, dropdown must sit above it */
+.invite-popper {
+  z-index: 9999 !important;
 }
 </style>
