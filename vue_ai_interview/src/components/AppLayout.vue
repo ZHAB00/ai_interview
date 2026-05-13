@@ -579,9 +579,8 @@ function handleLogout() {
 
 /* invite dialog — timed codes */
 .invite-dialog :deep(.el-dialog__body) {
-  max-height: 65vh;
-  overflow-y: auto;
   padding: 16px 20px;
+  overflow: visible;
 }
 
 .invite-section {
@@ -623,6 +622,8 @@ function handleLogout() {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  max-height: 40vh;
+  overflow-y: auto;
 }
 .timed-item {
   background: var(--color-bg);

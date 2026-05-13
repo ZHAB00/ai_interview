@@ -17,6 +17,11 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/admin/invite-codes", tags=["管理后台-邀请码"])
 
 
+def _ensure_utc(dt: datetime) -> datetime:
+    """MySQL DateTime 不存时区，返回前补充 UTC 标记，避免前端解析偏差。"""
+    return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
+
+
 @router.post("", status_code=201)
 async def create_invite_code(
     req: CreateInviteCodeRequest,
@@ -40,9 +45,9 @@ async def create_invite_code(
         "code": invite.code,
         "max_uses": invite.max_uses,
         "use_count": invite.use_count,
-        "expires_at": invite.expires_at.isoformat(),
+        "expires_at": _ensure_utc(invite.expires_at).isoformat(),
         "is_active": invite.is_active,
-        "created_at": invite.created_at.isoformat(),
+        "created_at": _ensure_utc(invite.created_at).isoformat(),
     }
 
 
@@ -65,9 +70,9 @@ async def list_invite_codes(
             code=c.code,
             max_uses=c.max_uses,
             use_count=c.use_count,
-            expires_at=c.expires_at,
+            expires_at=_ensure_utc(c.expires_at),
             is_active=c.is_active,
-            created_at=c.created_at,
+            created_at=_ensure_utc(c.created_at),
         )
         for c in codes
     ]}
