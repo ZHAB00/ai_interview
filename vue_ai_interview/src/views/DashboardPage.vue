@@ -1082,6 +1082,7 @@ const guideSteps = steps
   /* History view on mobile: show history title + cards, hide upload/config */
   .dashboard-page.view-history .title-default,
   .dashboard-page.view-history .upload-section,
+  .dashboard-page.view-history .jd-section,
   .dashboard-page.view-history .config-section,
   .dashboard-page.view-history .resume-summary { display: none; }
   .dashboard-page.view-history .title-history { display: block; }
