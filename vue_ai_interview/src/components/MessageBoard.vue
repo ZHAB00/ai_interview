@@ -1,5 +1,6 @@
 <script setup>
-import { ref, onMounted, nextTick } from 'vue'
+import { ref, nextTick } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { useAuthStore } from '../stores/authStore.js'
 import api from '../services/api.js'
 
@@ -9,6 +10,8 @@ const messages = ref([])
 const text = ref('')
 const sending = ref(false)
 const listRef = ref(null)
+const pressingId = ref(null)
+let longPressTimer = null
 
 async function loadMessages() {
   try {
@@ -47,13 +50,26 @@ function canDelete(m) {
   return authStore.isAdmin || m.user_id === authStore.userInfo?.user_id
 }
 
-import { ElMessage, ElMessageBox } from 'element-plus'
-
 async function confirmDelete(m) {
   try {
     await ElMessageBox.confirm('确定删除这条留言？', '提示', { confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning' })
     await deleteMessage(m.id)
   } catch {}
+}
+
+function startPress(m) {
+  if (!canDelete(m)) return
+  pressingId.value = m.id
+  longPressTimer = setTimeout(() => {
+    pressingId.value = null
+    confirmDelete(m)
+  }, 600)
+}
+
+function cancelPress() {
+  clearTimeout(longPressTimer)
+  longPressTimer = null
+  pressingId.value = null
 }
 
 function toggle() {
@@ -83,16 +99,16 @@ function fmtTime(iso) {
       </div>
 
       <div class="msg-list" ref="listRef" v-if="messages.length">
-        <div v-for="m in messages" :key="m.id" class="msg-item">
+        <div v-for="m in messages" :key="m.id" class="msg-item"
+          :class="{ 'msg-item--pressing': pressingId === m.id }"
+          @touchstart="startPress(m)" @touchend="cancelPress" @touchmove="cancelPress"
+          @mousedown="startPress(m)" @mouseup="cancelPress" @mouseleave="cancelPress">
           <div class="msg-meta">
             <span class="msg-user">
-              {{ m.username }}
               <span class="msg-admin-tag" v-if="m.role === 'admin'">管理员</span>
+              {{ m.username }}
             </span>
-            <div class="msg-actions">
-              <button class="msg-del-btn" v-if="canDelete(m)" @click="confirmDelete(m)" title="删除">×</button>
-              <span class="msg-time">{{ fmtTime(m.created_at) }}</span>
-            </div>
+            <span class="msg-time">{{ fmtTime(m.created_at) }}</span>
           </div>
           <div class="msg-text">{{ m.content }}</div>
         </div>
@@ -149,17 +165,13 @@ function fmtTime(iso) {
 
 .msg-list { flex: 1; overflow-y: auto; padding: 12px 16px; display: flex; flex-direction: column; gap: 10px; }
 .msg-item { padding-bottom: 10px; border-bottom: 1px solid var(--color-border-light); }
-.msg-meta { display: flex; justify-content: space-between; margin-bottom: 4px; }
+.msg-meta { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
 .msg-user { font-size: 13px; font-weight: 500; color: var(--color-accent); }
 .msg-admin-tag {
   display: inline-block; font-size: 10px; background: var(--color-accent); color: #fff;
-  padding: 1px 5px; border-radius: 3px; margin-left: 4px; vertical-align: middle; line-height: 1.4;
+  padding: 1px 5px; border-radius: 3px; margin-right: 4px; vertical-align: middle; line-height: 1.4;
 }
-.msg-actions { display: flex; align-items: center; gap: 8px; }
-.msg-del-btn {
-  background: none; border: none; font-size: 16px; color: var(--color-text-secondary); cursor: pointer; padding: 0; line-height: 1;
-}
-.msg-del-btn:hover { color: #e74c3c; }
+.msg-item--pressing { opacity: 0.6; transition: opacity 0.15s; }
 .msg-time { font-size: 11px; color: var(--color-text-secondary); }
 .msg-text { font-size: 14px; color: var(--color-text); line-height: 1.5; }
 .msg-empty { flex: 1; display: flex; align-items: center; justify-content: center; color: var(--color-text-secondary); font-size: 14px; }

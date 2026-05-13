@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { useAuthStore } from '../stores/authStore.js'
 import api from '../services/api.js'
 
@@ -12,6 +12,8 @@ const text = ref('')
 const sending = ref(false)
 const listRef = ref(null)
 const loading = ref(false)
+const pressingId = ref(null)
+let longPressTimer = null
 
 async function loadMessages() {
   loading.value = true
@@ -52,13 +54,26 @@ function canDelete(m) {
   return authStore.isAdmin || m.user_id === authStore.userInfo?.user_id
 }
 
-import { ElMessageBox } from 'element-plus'
-
 async function confirmDelete(m) {
   try {
     await ElMessageBox.confirm('确定删除这条留言？', '提示', { confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning' })
     await deleteMessage(m.id)
   } catch {}
+}
+
+function startPress(m) {
+  if (!canDelete(m)) return
+  pressingId.value = m.id
+  longPressTimer = setTimeout(() => {
+    pressingId.value = null
+    confirmDelete(m)
+  }, 600)
+}
+
+function cancelPress() {
+  clearTimeout(longPressTimer)
+  longPressTimer = null
+  pressingId.value = null
 }
 
 function fmtTime(iso) {
@@ -89,18 +104,18 @@ onMounted(loadMessages)
         <p class="mp-empty-hint">来说两句吧</p>
       </div>
 
-      <div v-for="m in messages" :key="m.id" class="mp-item">
+      <div v-for="m in messages" :key="m.id" class="mp-item"
+        :class="{ 'mp-item--pressing': pressingId === m.id }"
+        @touchstart="startPress(m)" @touchend="cancelPress" @touchmove="cancelPress"
+        @mousedown="startPress(m)" @mouseup="cancelPress" @mouseleave="cancelPress">
         <div class="mp-avatar">{{ m.username.charAt(0) }}</div>
         <div class="mp-body">
           <div class="mp-meta">
             <span class="mp-user">
-              {{ m.username }}
               <span class="mp-admin-tag" v-if="m.role === 'admin'">管理员</span>
+              {{ m.username }}
             </span>
-            <div class="mp-actions">
-              <button class="mp-del-btn" v-if="canDelete(m)" @click="confirmDelete(m)" title="删除">×</button>
-              <span class="mp-time">{{ fmtTime(m.created_at) }}</span>
-            </div>
+            <span class="mp-time">{{ fmtTime(m.created_at) }}</span>
           </div>
           <div class="mp-text">{{ m.content }}</div>
         </div>
@@ -162,17 +177,13 @@ onMounted(loadMessages)
   font-size: 14px; font-weight: 600; flex-shrink: 0;
 }
 .mp-body { flex: 1; min-width: 0; }
-.mp-meta { display: flex; justify-content: space-between; margin-bottom: 6px; }
+.mp-meta { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
 .mp-user { font-size: 14px; font-weight: 500; color: var(--color-accent); }
 .mp-admin-tag {
   display: inline-block; font-size: 10px; background: var(--color-accent); color: #fff;
-  padding: 1px 5px; border-radius: 3px; margin-left: 4px; vertical-align: middle; line-height: 1.4;
+  padding: 1px 5px; border-radius: 3px; margin-right: 4px; vertical-align: middle; line-height: 1.4;
 }
-.mp-actions { display: flex; align-items: center; gap: 8px; }
-.mp-del-btn {
-  background: none; border: none; font-size: 16px; color: var(--color-text-secondary); cursor: pointer; padding: 0; line-height: 1;
-}
-.mp-del-btn:hover { color: #e74c3c; }
+.mp-item--pressing { opacity: 0.6; transition: opacity 0.15s; }
 .mp-time { font-size: 11px; color: var(--color-text-secondary); }
 .mp-text { font-size: 15px; color: var(--color-text); line-height: 1.6; word-break: break-word; }
 
