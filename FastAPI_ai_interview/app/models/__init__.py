@@ -9,5 +9,6 @@ from app.models.document import Document
 from app.models.report import Report
 from app.models.feedback import Feedback
 from app.models.message import Message
+from app.models.invite_code import InviteCode
 
-__all__ = ["Base", "User", "Resume", "Interview", "Question", "Document", "Report", "Feedback", "Message"]
+__all__ = ["Base", "User", "Resume", "Interview", "Question", "Document", "Report", "Feedback", "Message", "InviteCode"]
