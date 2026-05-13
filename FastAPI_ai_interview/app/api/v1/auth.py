@@ -72,10 +72,14 @@ async def register(req: RegisterRequest, db: AsyncSession = Depends(get_db)):
     if result.scalar_one_or_none():
         raise ConflictException("手机号已注册")
 
-    # Step 2: Validate invite code (HMAC first, then DB)
-    if not validate_invite_code(req.invite_code):
-        if not await validate_db_invite_code(req.invite_code, db):
-            raise ValidationErrorException("邀请码不正确")
+    # Step 2: Validate invite code — DB timed codes authoritative, HMAC as fallback
+    db_result = await validate_db_invite_code(req.invite_code, db)
+    if db_result is True:
+        pass  # Valid timed code, use_count already incremented
+    elif db_result is False:
+        raise ValidationErrorException("邀请码不正确")  # Found in DB but invalid
+    elif not validate_invite_code(req.invite_code):
+        raise ValidationErrorException("邀请码不正确")  # Not in DB, not HMAC
 
     # Step 3: Verify SMS token
     if not _verify_sms_token(req.sms_token, req.phone, "register"):

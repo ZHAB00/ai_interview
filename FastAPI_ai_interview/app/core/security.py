@@ -168,23 +168,26 @@ async def is_token_revoked(jti: str | None) -> bool:
         return False  # Fail open on Redis errors — don't lock users out
 
 
-async def validate_db_invite_code(code: str, db) -> bool:
-    """Check if the code matches an active time-limited invite code in the DB.
-    Increments use_count on match. Returns False if not found or expired/fully used.
+async def validate_db_invite_code(code: str, db) -> bool | None:
+    """Check time-limited invite codes.
+
+    Returns:
+        True  — valid code found, use_count incremented
+        False — code found in DB but invalid (inactive/expired/exhausted)
+        None  — code not found in DB (fall through to HMAC)
     """
     from sqlalchemy import select
     from app.models.invite_code import InviteCode
     from datetime import datetime, timezone
 
     code = code.strip().upper()
-    result = await db.execute(
-        select(InviteCode).where(
-            InviteCode.code == code,
-            InviteCode.is_active == True,
-        )
-    )
+    result = await db.execute(select(InviteCode).where(InviteCode.code == code))
     invite = result.scalar_one_or_none()
-    if not invite:
+
+    if invite is None:
+        return None  # Not a timed code — try HMAC
+
+    if not invite.is_active:
         return False
 
     if invite.expires_at.replace(tzinfo=timezone.utc) < datetime.now(timezone.utc):
