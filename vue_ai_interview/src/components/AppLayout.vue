@@ -360,13 +360,13 @@ function handleLogout() {
           <div class="timed-form">
             <div class="timed-form-item">
               <label>有效期</label>
-              <el-select v-model="duration" size="small" popper-class="invite-popper" teleported style="width: 90px">
+              <el-select v-model="duration" size="small" popper-class="invite-popper" teleported style="width: 80px">
                 <el-option v-for="o in durationOptions" :key="o.value" :label="o.label" :value="o.value" />
               </el-select>
             </div>
             <div class="timed-form-item">
               <label>次数</label>
-              <el-select v-model="maxUses" size="small" popper-class="invite-popper" teleported style="width: 90px">
+              <el-select v-model="maxUses" size="small" popper-class="invite-popper" teleported style="width: 80px">
                 <el-option v-for="o in maxUsesOptions" :key="o.value" :label="o.label" :value="o.value" />
               </el-select>
             </div>
@@ -668,18 +668,28 @@ function handleLogout() {
 /* mobile dialog */
 @media (max-width: 768px) {
   .invite-dialog {
-    --el-dialog-width: 90vw !important;
-    max-width: 380px;
+    --el-dialog-width: 95vw !important;
+    max-width: 340px;
   }
   .invite-dialog :deep(.el-dialog__body) {
-    padding: 12px 14px;
+    padding: 10px 8px;
   }
   .timed-code {
     font-size: 16px;
     letter-spacing: 2px;
   }
   .timed-form {
-    gap: 6px;
+    gap: 4px;
+  }
+  .timed-form-item label {
+    font-size: 11px;
+  }
+  .timed-form-item .el-select {
+    width: 62px !important;
+  }
+  .timed-gen-btn {
+    font-size: 12px !important;
+    padding: 6px 10px !important;
   }
 }
 </style>
