@@ -2,6 +2,7 @@
 
 import logging
 import re
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Header
 from jwt import PyJWTError as JwtError
@@ -17,10 +18,10 @@ from app.core.security import (
     generate_invite_code,
     hash_password,
     revoke_token,
-    validate_db_invite_code,
     validate_invite_code,
     verify_password,
 )
+from app.models.invite_code import InviteCode
 from app.models.user import User
 from app.schemas.auth import (
     LoginRequest,
@@ -72,14 +73,23 @@ async def register(req: RegisterRequest, db: AsyncSession = Depends(get_db)):
     if result.scalar_one_or_none():
         raise ConflictException("手机号已注册")
 
-    # Step 2: Validate invite code — DB timed codes authoritative, HMAC as fallback
-    db_result = await validate_db_invite_code(req.invite_code, db)
-    if db_result is True:
-        pass  # Valid timed code, use_count already incremented
-    elif db_result is False:
-        raise ValidationErrorException("邀请码不正确")  # Found in DB but invalid
-    elif not validate_invite_code(req.invite_code):
-        raise ValidationErrorException("邀请码不正确")  # Not in DB, not HMAC
+    # Step 2: Validate invite code — DB timed codes first (authoritative), HMAC fallback
+    code = req.invite_code.strip().upper()
+    result = await db.execute(select(InviteCode).where(InviteCode.code == code))
+    invite = result.scalar_one_or_none()
+
+    if invite is not None:
+        if not invite.is_active:
+            raise ValidationErrorException("该邀请码已被停用")
+        if invite.expires_at.replace(tzinfo=timezone.utc) < datetime.now(timezone.utc):
+            raise ValidationErrorException("该邀请码已过期")
+        if invite.max_uses is not None and invite.use_count >= invite.max_uses:
+            raise ValidationErrorException("该邀请码使用次数已用完")
+        invite.use_count += 1
+        await db.commit()
+        logger.info(f"DB邀请码使用: id={invite.id}, code={code}, use_count={invite.use_count}")
+    elif not validate_invite_code(code):
+        raise ValidationErrorException("邀请码不正确")
 
     # Step 3: Verify SMS token
     if not _verify_sms_token(req.sms_token, req.phone, "register"):
