@@ -17,6 +17,7 @@ from app.core.security import (
     generate_invite_code,
     hash_password,
     revoke_token,
+    validate_db_invite_code,
     validate_invite_code,
     verify_password,
 )
@@ -71,9 +72,10 @@ async def register(req: RegisterRequest, db: AsyncSession = Depends(get_db)):
     if result.scalar_one_or_none():
         raise ConflictException("手机号已注册")
 
-    # Step 2: Validate invite code
+    # Step 2: Validate invite code (HMAC first, then DB)
     if not validate_invite_code(req.invite_code):
-        raise ValidationErrorException("邀请码不正确")
+        if not await validate_db_invite_code(req.invite_code, db):
+            raise ValidationErrorException("邀请码不正确")
 
     # Step 3: Verify SMS token
     if not _verify_sms_token(req.sms_token, req.phone, "register"):

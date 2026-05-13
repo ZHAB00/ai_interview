@@ -166,3 +166,34 @@ async def is_token_revoked(jti: str | None) -> bool:
     except Exception as e:
         logger.warning(f"Failed to check token revocation (Redis error): {e}")
         return False  # Fail open on Redis errors — don't lock users out
+
+
+async def validate_db_invite_code(code: str, db) -> bool:
+    """Check if the code matches an active time-limited invite code in the DB.
+    Increments use_count on match. Returns False if not found or expired/fully used.
+    """
+    from sqlalchemy import select
+    from app.models.invite_code import InviteCode
+    from datetime import datetime, timezone
+
+    code = code.strip().upper()
+    result = await db.execute(
+        select(InviteCode).where(
+            InviteCode.code == code,
+            InviteCode.is_active == True,
+        )
+    )
+    invite = result.scalar_one_or_none()
+    if not invite:
+        return False
+
+    if invite.expires_at.replace(tzinfo=timezone.utc) < datetime.now(timezone.utc):
+        return False
+
+    if invite.max_uses is not None and invite.use_count >= invite.max_uses:
+        return False
+
+    invite.use_count += 1
+    await db.commit()
+    logger.info(f"DB邀请码使用: id={invite.id}, code={code}, use_count={invite.use_count}")
+    return True
