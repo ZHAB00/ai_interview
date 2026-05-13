@@ -1,7 +1,7 @@
 """add_source_to_questions
 
 Revision ID: 0ab5679bef63
-Revises: d2a2caa56b70
+Revises: d5e6f7a8c9b1
 Create Date: 2026-05-11 14:49:39.541696
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = '0ab5679bef63'
-down_revision: Union[str, None] = 'd2a2caa56b70'
+down_revision: Union[str, None] = 'd5e6f7a8c9b1'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
