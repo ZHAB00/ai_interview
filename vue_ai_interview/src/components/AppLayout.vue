@@ -360,13 +360,13 @@ function handleLogout() {
           <div class="timed-form">
             <div class="timed-form-item">
               <label>有效期</label>
-              <el-select v-model="duration" size="small" popper-class="invite-popper" teleported>
+              <el-select v-model="duration" size="small" popper-class="invite-popper" teleported style="width: 90px">
                 <el-option v-for="o in durationOptions" :key="o.value" :label="o.label" :value="o.value" />
               </el-select>
             </div>
             <div class="timed-form-item">
               <label>次数</label>
-              <el-select v-model="maxUses" size="small" popper-class="invite-popper" teleported>
+              <el-select v-model="maxUses" size="small" popper-class="invite-popper" teleported style="width: 90px">
                 <el-option v-for="o in maxUsesOptions" :key="o.value" :label="o.label" :value="o.value" />
               </el-select>
             </div>
