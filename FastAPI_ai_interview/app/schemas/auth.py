@@ -46,6 +46,10 @@ class ResetPasswordRequest(BaseModel):
     new_password: str = Field(..., min_length=8, max_length=128, description="新密码，至少8位，含英文和数字")
 
 
+class CheckInviteCodeRequest(BaseModel):
+    invite_code: str = Field(..., min_length=4, max_length=32, description="待校验的邀请码")
+
+
 class TokenData(BaseModel):
     user_id: int | None = None
     role: str | None = None

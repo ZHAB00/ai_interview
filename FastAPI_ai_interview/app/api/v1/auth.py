@@ -24,6 +24,7 @@ from app.core.security import (
 from app.models.invite_code import InviteCode
 from app.models.user import User
 from app.schemas.auth import (
+    CheckInviteCodeRequest,
     LoginRequest,
     LoginResponse,
     RefreshRequest,
@@ -55,6 +56,26 @@ def _verify_sms_token(token: str, phone: str, purpose: str) -> bool:
         return False
 
 
+async def _validate_invite_code(code: str, db: AsyncSession) -> str | None:
+    """Check if an invite code is valid. Returns None if valid, or an error message string."""
+    code = code.strip().upper()
+    result = await db.execute(select(InviteCode).where(InviteCode.code == code))
+    invite = result.scalar_one_or_none()
+
+    if invite is not None:
+        if not invite.is_active:
+            return "该邀请码已被停用"
+        if invite.expires_at.replace(tzinfo=timezone.utc) < datetime.now(timezone.utc):
+            return "该邀请码已过期"
+        if invite.max_uses is not None and invite.use_count >= invite.max_uses:
+            return "该邀请码使用次数已用完"
+        return None  # Valid DB code
+    elif not validate_invite_code(code):
+        return "邀请码不正确"
+
+    return None  # Valid HMAC code
+
+
 @router.get("/invite-code")
 async def get_invite_code(
     current_user = Depends(get_current_admin),
@@ -65,6 +86,15 @@ async def get_invite_code(
     return {"invite_code": code, "valid_minutes": 15, "note": "同一窗口内的上一个码也有效（15分钟容错）"}
 
 
+@router.post("/check-invite-code")
+async def check_invite_code(req: CheckInviteCodeRequest, db: AsyncSession = Depends(get_db)):
+    """在注册前校验邀请码是否有效（不消耗使用次数）。"""
+    error = await _validate_invite_code(req.invite_code, db)
+    if error:
+        raise ValidationErrorException(error)
+    return {"valid": True}
+
+
 @router.post("/register", response_model=RegisterResponse, status_code=201)
 async def register(req: RegisterRequest, db: AsyncSession = Depends(get_db)):
     """用户注册：邀请码 + 短信验证码 + 强密码。"""
@@ -73,27 +103,18 @@ async def register(req: RegisterRequest, db: AsyncSession = Depends(get_db)):
     if result.scalar_one_or_none():
         raise ConflictException("手机号已注册")
 
-    # Step 2: Validate invite code — DB timed codes first (authoritative), HMAC fallback
+    # Step 2: Validate and consume invite code
+    error = await _validate_invite_code(req.invite_code, db)
+    if error:
+        raise ValidationErrorException(error)
+
     code = req.invite_code.strip().upper()
-    logger.info(f"[DEBUG-REGISTER] invite_code input='{code}' (len={len(code)})")
     result = await db.execute(select(InviteCode).where(InviteCode.code == code))
     invite = result.scalar_one_or_none()
-    logger.info(f"[DEBUG-REGISTER] DB result: found={invite is not None}, is_active={invite.is_active if invite else 'N/A'}")
-    hmac_ok = validate_invite_code(code)
-    logger.info(f"[DEBUG-REGISTER] HMAC valid: {hmac_ok}")
-
     if invite is not None:
-        if not invite.is_active:
-            raise ValidationErrorException("该邀请码已被停用")
-        if invite.expires_at.replace(tzinfo=timezone.utc) < datetime.now(timezone.utc):
-            raise ValidationErrorException("该邀请码已过期")
-        if invite.max_uses is not None and invite.use_count >= invite.max_uses:
-            raise ValidationErrorException("该邀请码使用次数已用完")
         invite.use_count += 1
         await db.commit()
         logger.info(f"DB邀请码使用: id={invite.id}, code={code}, use_count={invite.use_count}")
-    elif not validate_invite_code(code):
-        raise ValidationErrorException("邀请码不正确")
 
     # Step 3: Verify SMS token
     if not _verify_sms_token(req.sms_token, req.phone, "register"):

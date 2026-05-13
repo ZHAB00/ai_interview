@@ -2,7 +2,7 @@
 import { reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { sendSms, verifySms } from '../services/authService.js'
+import { checkInviteCode, sendSms, verifySms } from '../services/authService.js'
 import { useAuthStore } from '../stores/authStore.js'
 
 const router = useRouter()
@@ -26,12 +26,22 @@ const form = reactive({
 })
 
 // ── Step 1: Verify invite code ──
-function checkInviteCode() {
-  if (form.inviteCode.trim().length >= 4) {
+async function checkInviteCodeHandler() {
+  const code = form.inviteCode.trim()
+  if (code.length < 4) {
+    errorMsg.value = '邀请码长度不足'
+    return
+  }
+  loading.value = true
+  errorMsg.value = ''
+  try {
+    await checkInviteCode(code)
     step.value = 2
-    errorMsg.value = ''
-  } else {
-    errorMsg.value = '邀请码不正确'
+  } catch (err) {
+    const msg = err.response?.data?.error?.message || '邀请码无效'
+    errorMsg.value = msg
+  } finally {
+    loading.value = false
   }
 }
 
@@ -159,9 +169,9 @@ onUnmounted(() => clearInterval(countdownTimer))
           placeholder="请输入内测邀请码"
           size="large"
           maxlength="32"
-          @keyup.enter="checkInviteCode"
+          @keyup.enter="checkInviteCodeHandler"
         />
-        <el-button type="primary" size="large" style="width: 100%; margin-top: 16px" @click="checkInviteCode">
+        <el-button type="primary" size="large" style="width: 100%; margin-top: 16px" :loading="loading" @click="checkInviteCodeHandler">
           下一步
         </el-button>
       </div>

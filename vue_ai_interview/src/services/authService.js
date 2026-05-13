@@ -1,5 +1,9 @@
 import api from './api.js'
 
+export function checkInviteCode(code) {
+  return api.post('/api/auth/check-invite-code', { invite_code: code })
+}
+
 export function login(phone, password) {
   return api.post('/api/auth/login', { phone, password })
 }
