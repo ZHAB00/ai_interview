@@ -69,3 +69,25 @@ class FeedbackCreateRequest(BaseModel):
 class FeedbackCreateResponse(BaseModel):
     status: str = "recorded"
     feedback_id: int
+
+
+# ── Invite Codes ──
+
+
+class CreateInviteCodeRequest(BaseModel):
+    duration_hours: float = Field(gt=0)
+    max_uses: int | None = Field(default=None, ge=1)
+
+
+class InviteCodeItem(BaseModel):
+    id: int
+    code: str
+    max_uses: int | None
+    use_count: int
+    expires_at: datetime
+    is_active: bool
+    created_at: datetime
+
+
+class InviteCodeListResponse(BaseModel):
+    items: list[InviteCodeItem]
