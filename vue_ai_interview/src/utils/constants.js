@@ -43,3 +43,9 @@ export const WS_RECONNECT_INTERVALS = [1000, 3000, 5000]
 export const REPORT_POLL_INTERVAL = 5000 // 5 seconds
 
 export const ETHICS_STATEMENT = '此评分为模拟练习参考，不构成真实招聘决策依据'
+
+export const QUICK_REPLIES = [
+  '可以再说一遍吗',
+  '请换一种问法',
+  '跳过这个问题'
+]

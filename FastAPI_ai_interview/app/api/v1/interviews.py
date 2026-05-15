@@ -7,6 +7,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_db
@@ -53,7 +54,9 @@ async def _trim_history(user_id: int, db: AsyncSession):
     # Hard-delete old soft-deleted records
     cutoff = datetime.now(timezone.utc) - timedelta(days=SOFT_DELETE_RETENTION_DAYS)
     old_deleted = await db.execute(
-        select(Interview).where(
+        select(Interview)
+        .options(selectinload(Interview.report))
+        .where(
             Interview.user_id == user_id,
             Interview.deleted_at.isnot(None),
             Interview.deleted_at < cutoff,
@@ -61,6 +64,9 @@ async def _trim_history(user_id: int, db: AsyncSession):
     )
     for rec in old_deleted.scalars().all():
         logger.info(f"硬删除过期记录: interview_id={rec.id}")
+        # Delete associated report first to avoid FK constraint (SET NULL on NOT NULL column)
+        if rec.report:
+            await db.delete(rec.report)
         await db.delete(rec)
 
     # Count visible records (not deleted, not favorited)

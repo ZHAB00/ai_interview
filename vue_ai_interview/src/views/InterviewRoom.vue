@@ -2,12 +2,10 @@
 import { ref, onMounted, onUnmounted, nextTick, watch, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessageBox, ElMessage } from 'element-plus'
-import { AI_STATUS } from '../utils/constants.js'
+import { AI_STATUS, QUICK_REPLIES } from '../utils/constants.js'
 import { useInterview } from '../composables/useInterview.js'
 import { useSileroVAD } from '../composables/useSileroVAD.js'
 import CodeEditorPanel from '../components/CodeEditorPanel.vue'
-import AudioWaveform from '../components/AudioWaveform.vue'
-import AIStatusIndicator from '../components/AIStatusIndicator.vue'
 import CountdownTimer from '../components/CountdownTimer.vue'
 import StageTransition from '../components/StageTransition.vue'
 
@@ -27,7 +25,7 @@ const {
   micParsing, recordingDuration, MAX_RECORD_SEC,
   draftText, draftId, draftModified,
   startInterview, startMic, stopMic, reRecord, confirmDraft, updateDraft, sendManualText,
-  isMicActive, remainingSeconds,
+  isMicActive, remainingSeconds, cancelMicOnTyping,
   submitCode, endSession, closeStageTransition,
   isEnding, isEndingLong
 } = useInterview({ externalVAD: vadDetect })
@@ -127,11 +125,29 @@ onUnmounted(() => {
 
 // --- Manual text ---
 const manualText = ref('')
+const inputTextareaRef = ref(null)
+
+function handleQuickReply(text) {
+  manualText.value = text
+}
+
 function handleSendText() {
   const text = manualText.value.trim()
   if (!text) return
+  cancelMicOnTyping()
   sendManualText(text)
   manualText.value = ''
+}
+
+function handleInputFocus() {
+  cancelMicOnTyping()
+}
+
+function handleTextareaKeydown(e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault()
+    handleSendText()
+  }
 }
 
 function handleTimeout() {
@@ -187,6 +203,9 @@ watch(() => dialogue.value, async () => {
 
 const isCodingActive = computed(() => !!codingChallenge.value)
 const isAiSpeaking = computed(() => aiStatus === AI_STATUS.SPEAKING)
+const isInputDisabled = computed(() => {
+  return aiStatus.value !== AI_STATUS.LISTENING || !!codingChallenge.value
+})
 
 function handleMicToggle() {
   if (isMicActive.value) {
@@ -297,15 +316,25 @@ function handleMicToggle() {
 
     <!-- Footer -->
     <footer class="room-footer">
-      <div class="footer-left">
-        <!-- PTT Mic Button with countdown -->
+      <!-- Quick reply chips: only when AI is listening and not coding and not recording -->
+      <div v-if="!isInputDisabled && !isMicActive" class="quick-replies">
+        <span
+          v-for="(reply, idx) in QUICK_REPLIES"
+          :key="idx"
+          class="quick-reply-chip"
+          @click="handleQuickReply(reply)"
+        >{{ reply }}</span>
+      </div>
+
+      <!-- Unified input bar -->
+      <div class="input-bar" :class="{ 'input-disabled': isInputDisabled, 'input-recording': isMicActive }">
+        <!-- Mic button -->
         <div class="mic-area">
           <el-button
             :type="isMicActive ? 'danger' : micParsing ? '' : micEnabled ? 'primary' : 'info'"
             :icon="isMicActive ? 'VideoPause' : micParsing ? 'Loading' : 'Microphone'"
             circle
-            size="large"
-            :disabled="micParsing || (!isMicActive && !micEnabled)"
+            :disabled="micParsing || isInputDisabled || (!isMicActive && !micEnabled)"
             :class="['mic-btn', { 'mic-recording': isMicActive, 'mic-parsing': micParsing, 'mic-warn': isMicActive && recordingWarnLevel === 'warning', 'mic-critical': isMicActive && recordingWarnLevel === 'critical' }]"
             @click="handleMicToggle"
           />
@@ -314,21 +343,34 @@ function handleMicToggle() {
           </span>
           <span v-if="micParsing" class="mic-parsing-label">解析中...</span>
         </div>
-        <AIStatusIndicator :status="aiStatus" />
-        <AudioWaveform :active="isRecording" />
-      </div>
-      <div class="footer-right">
-        <el-input
+
+        <!-- Textarea -->
+        <textarea
+          ref="inputTextareaRef"
           v-model="manualText"
-          placeholder="或手动输入文字..."
-          size="small"
-          style="width: 220px"
-          @keyup.enter="handleSendText"
+          class="input-textarea"
+          :placeholder="isInputDisabled ? '面试官正在回复...' : isMicActive ? '文字输入已锁定（录音中）' : '输入你的回答，或点击麦克风语音输入...'"
+          :disabled="isInputDisabled || isMicActive"
+          :rows="2"
+          @focus="handleInputFocus"
+          @keydown="handleTextareaKeydown"
+        ></textarea>
+
+        <!-- Send button -->
+        <el-button
+          type="primary"
+          :disabled="isInputDisabled || isMicActive || !manualText.trim()"
+          :loading="isInputDisabled && !isMicActive"
+          class="send-btn"
+          @click="handleSendText"
         >
-          <template #append>
-            <el-button @click="handleSendText" :disabled="!manualText.trim()">发送</el-button>
-          </template>
-        </el-input>
+          {{ isInputDisabled && !isMicActive ? '回复中' : '发送' }}
+        </el-button>
+      </div>
+
+      <!-- Hint text -->
+      <div class="input-hint" v-if="!isInputDisabled && !isMicActive">
+        Enter 发送 · Shift+Enter 换行
       </div>
     </footer>
 
@@ -529,17 +571,98 @@ function handleMicToggle() {
 
 /* Footer */
 .room-footer {
-  display: flex; justify-content: space-between; align-items: center;
-  height: 52px; padding: 0 20px; background: var(--color-card);
-  border-top: 1px solid var(--color-border); flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 20px 12px;
+  background: var(--color-card);
+  border-top: 1px solid var(--color-border);
+  flex-shrink: 0;
 }
-.footer-left { display: flex; align-items: center; gap: 10px; }
-.footer-right { display: flex; align-items: center; }
+
+/* Quick Reply Chips */
+.quick-replies {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.quick-reply-chip {
+  display: inline-block;
+  padding: 4px 12px;
+  font-size: 12px;
+  color: var(--color-accent);
+  background: rgba(43, 58, 103, 0.06);
+  border: 1px solid rgba(43, 58, 103, 0.12);
+  border-radius: 14px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s, border-color 0.15s;
+}
+.quick-reply-chip:hover {
+  background: rgba(43, 58, 103, 0.12);
+  border-color: rgba(43, 58, 103, 0.25);
+}
+
+/* Unified Input Bar */
+.input-bar {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--color-card);
+  border: 2px solid var(--color-accent);
+  border-radius: 12px;
+  transition: border-color 0.2s, opacity 0.2s;
+}
+.input-bar.input-disabled {
+  border-color: var(--color-border);
+  opacity: 0.6;
+}
+.input-bar.input-recording {
+  border-color: #e53e3e;
+}
+
+/* Textarea */
+.input-textarea {
+  flex: 1;
+  min-height: 24px;
+  height: 48px;
+  max-height: 150px;
+  border: none;
+  outline: none;
+  resize: none;
+  font-size: 14px;
+  font-family: inherit;
+  line-height: 1.6;
+  padding: 4px 0;
+  background: transparent;
+  color: var(--color-text);
+}
+.input-textarea::placeholder {
+  color: var(--color-text-secondary);
+}
+.input-textarea:disabled {
+  color: #999;
+  cursor: not-allowed;
+}
+
+/* Send button */
+.send-btn {
+  flex-shrink: 0;
+}
+
+/* Hint */
+.input-hint {
+  text-align: right;
+  font-size: 10px;
+  color: #b0b0b0;
+  padding-right: 4px;
+}
 
 /* ── Mobile (≤768px) ── */
 @media (max-width: 768px) {
   .interview-room {
-    height: calc(100vh - 40px - 56px); /* header 40 + bottom tabs 56 */
+    height: calc(100dvh - 40px - 56px); /* dvh 跟随键盘动态调整 */
   }
 
   .room-header {
@@ -598,29 +721,47 @@ function handleMicToggle() {
     display: none;
   }
 
-  /* Footer */
+  /* Footer — unified bar, no wrap */
   .room-footer {
-    height: auto;
-    padding: 8px 10px;
-    flex-wrap: wrap;
-    gap: 8px;
+    padding: 6px 8px 8px;
+    gap: 6px;
   }
-  .footer-left {
-    flex: 1;
-    justify-content: center;
+
+  .quick-replies {
+    gap: 6px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
   }
-  .footer-right {
-    width: 100%;
+  .quick-replies::-webkit-scrollbar { display: none; }
+  .quick-reply-chip {
+    flex-shrink: 0;
+    font-size: 11px;
+    padding: 3px 10px;
   }
-  .footer-right .el-input {
-    width: 100% !important;
-    min-width: 0 !important;
+
+  .input-bar {
+    padding: 6px 10px;
+    gap: 6px;
+    border-radius: 10px;
+  }
+
+  .input-textarea {
+    height: 36px;
+    min-height: 20px;
+    max-height: 100px;
+    font-size: 13px;
+  }
+
+  .input-hint {
+    font-size: 9px;
+    padding-right: 2px;
   }
 
   /* Mic button larger for touch */
-  .mic-area .el-button {
-    width: 56px !important;
-    height: 56px !important;
+  .input-bar .mic-area .el-button {
+    width: 42px !important;
+    height: 42px !important;
   }
 
   /* Draft bubble full width */

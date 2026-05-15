@@ -457,6 +457,17 @@ export function useInterview(options = {}) {
     }
   }
 
+  function cancelMicOnTyping() {
+    if (isMicActive.value) {
+      console.log('[麦克风] 打字取消录音')
+      isMicActive.value = false
+      clearRecordingTimer()
+      micStop()
+      micParsing.value = false
+      clearTimeout(micParsingTimer)
+    }
+  }
+
   function sendManualText(text) {
     console.log('[面试] 手动发送文本:', text)
     removeDraft()
@@ -518,6 +529,7 @@ export function useInterview(options = {}) {
     micReady,
     micParsing,
     isMicActive,
+    cancelMicOnTyping,
     recordingDuration,
     MAX_RECORD_SEC,
     draftText,
