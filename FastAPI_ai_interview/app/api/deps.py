@@ -1,6 +1,7 @@
 """FastAPI dependency injection: database sessions and current user."""
 
 import logging
+from datetime import datetime, timezone
 
 from fastapi import Depends, Header
 from jwt import PyJWTError as JWTError
@@ -47,6 +48,10 @@ async def get_current_user(
         raise UnauthorizedException(message="用户不存在")
     if user.is_disabled:
         raise UnauthorizedException(message="账号已被禁用")
+
+    # Update last_active_at for online status tracking (admin monitor)
+    user.last_active_at = datetime.now(timezone.utc)
+    await db.commit()
 
     return user
 
