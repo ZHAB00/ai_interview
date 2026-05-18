@@ -25,6 +25,7 @@ class User(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=True, onupdate=func.current_timestamp()
     )
+    last_active_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     # Relationships
     resumes = relationship("Resume", back_populates="user")
