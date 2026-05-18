@@ -103,12 +103,9 @@ async function goTab(tab) {
     return
   }
 
-  // Admin tab — toggle between questions and documents
+  // Admin tab — show popup to choose sub-page
   if (tab.key === 'admin') {
-    if (activeTab.value === 'admin') {
-      adminTabSub.value = adminTabSub.value === 'questions' ? 'documents' : 'questions'
-    }
-    router.push(adminTabSub.value === 'questions' ? '/admin/questions' : '/admin/documents')
+    showAdminMenu.value = true
     return
   }
 
@@ -117,6 +114,14 @@ async function goTab(tab) {
 
 // --- Invite Code ---
 const adminTabSub = ref('questions')
+const showAdminMenu = ref(false)
+
+function goAdminPage(page) {
+  showAdminMenu.value = false
+  if (page === 'questions') router.push('/admin/questions')
+  else if (page === 'documents') router.push('/admin/documents')
+  else if (page === 'monitor') router.push('/admin/monitor')
+}
 const inviteDialog = ref(false)
 const inviteCode = ref('')
 const countdown = ref('')
@@ -305,6 +310,7 @@ function handleLogout() {
               <el-dropdown-item v-if="!isMobile" @click="router.push('/dashboard')">首页</el-dropdown-item>
               <el-dropdown-item v-if="authStore.isAdmin && !isMobile" @click="router.push('/admin/questions')">题库管理</el-dropdown-item>
               <el-dropdown-item v-if="authStore.isAdmin && !isMobile" @click="router.push('/admin/documents')">文档管理</el-dropdown-item>
+              <el-dropdown-item v-if="authStore.isAdmin && !isMobile" @click="router.push('/admin/monitor')">实时监控</el-dropdown-item>
               <el-dropdown-item :divided="!isMobile" @click="handleLogout">退出登录</el-dropdown-item>
             </el-dropdown-menu>
           </template>
@@ -333,6 +339,24 @@ function handleLogout() {
         <span class="tab-label">{{ tab.label }}</span>
       </div>
     </nav>
+
+    <!-- Admin sub-menu (mobile) -->
+    <el-dialog v-model="showAdminMenu" title="管理" width="280px" :close-on-click-modal="true" class="admin-menu-dialog">
+      <div class="admin-menu-list">
+        <div class="admin-menu-item" @click="goAdminPage('questions')">
+          <el-icon><EditPen /></el-icon>
+          <span>题库管理</span>
+        </div>
+        <div class="admin-menu-item" @click="goAdminPage('documents')">
+          <el-icon><FolderOpened /></el-icon>
+          <span>文档管理</span>
+        </div>
+        <div class="admin-menu-item" @click="goAdminPage('monitor')">
+          <el-icon><DataAnalysis /></el-icon>
+          <span>实时监控</span>
+        </div>
+      </div>
+    </el-dialog>
 
     <!-- Invite Code Dialog -->
     <el-dialog v-model="inviteDialog" title="内测邀请码" width="360px" :close-on-click-modal="false" @close="closeInviteDialog" class="invite-dialog">
@@ -503,6 +527,21 @@ function handleLogout() {
   flex-shrink: 0;
 }
 
+/* --- Admin sub-menu (mobile) --- */
+.admin-menu-list { display: flex; flex-direction: column; }
+.admin-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  font-size: 15px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--color-border-light);
+  color: var(--color-text);
+}
+.admin-menu-item:last-child { border-bottom: none; }
+.admin-menu-item:active { background: var(--color-bg); }
+
 /* --- Bottom Tab Bar (mobile) --- */
 .bottom-tabs {
   display: none;
@@ -533,7 +572,7 @@ function handleLogout() {
   }
 
   .app-content {
-    padding-bottom: 56px;
+    padding-bottom: 70px;
   }
 
   .invite-code-display {
@@ -546,12 +585,13 @@ function handleLogout() {
     justify-content: space-around;
     align-items: center;
     position: fixed;
-    bottom: 0;
+    bottom: 6px;
     left: 0;
     right: 0;
-    height: 56px;
+    height: 60px;
     background: var(--color-card);
     border-top: 1px solid var(--color-border);
+    border-radius: 12px 12px 0 0;
     z-index: 1000;
     padding-bottom: env(safe-area-inset-bottom);
   }
@@ -560,8 +600,8 @@ function handleLogout() {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 2px;
-    padding: 4px 12px;
+    gap: 3px;
+    padding: 6px 14px;
     cursor: pointer;
     color: var(--color-text-secondary);
     transition: color 0.2s;
@@ -572,7 +612,7 @@ function handleLogout() {
   }
 
   .tab-label {
-    font-size: 10px;
+    font-size: 11px;
     line-height: 1;
   }
 }
