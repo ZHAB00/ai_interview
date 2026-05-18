@@ -78,6 +78,7 @@ async def list_users_for_monitor(
             role=u.role,
             is_online=is_online,
             last_active_at=u.last_active_at,
+            created_at=u.created_at,
             interview_count=interview_counts.get(u.id, 0),
             active_interview=active_interviews.get(u.id),
         ))

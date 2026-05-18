@@ -101,6 +101,7 @@ class MonitorUserItem(BaseModel):
     role: str
     is_online: bool
     last_active_at: datetime | None
+    created_at: datetime | None
     interview_count: int
     active_interview: dict | None  # {interview_id, position}
 

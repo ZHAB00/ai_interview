@@ -157,7 +157,7 @@ const isMobile = computed(() => window.innerWidth <= 768)
               <span :class="['status-dot', u.is_online ? 'online' : 'offline']"></span>
               {{ u.is_online ? '在线' : '离线' }}
             </td>
-            <td class="cell-time">{{ formatTime(u.created_at || u.last_active_at) }}</td>
+            <td class="cell-time">{{ formatTime(u.created_at) }}</td>
             <td>{{ u.interview_count }}</td>
           </tr>
         </tbody>

@@ -1,0 +1,89 @@
+<h2>手机端 — 当前状态与问题</h2>
+<p class="subtitle">先看看现在手机端长什么样，再聊怎么改</p>
+
+<div style="display:flex;gap:24px;flex-wrap:wrap;">
+
+<!-- Current mobile -->
+<div style="flex:1;min-width:280px;max-width:360px;">
+<h3>当前手机端布局</h3>
+<div class="mockup">
+<div class="mockup-header">iPhone 尺寸模拟</div>
+<div class="mockup-body" style="padding:0;background:#fff;border-radius:8px;overflow:hidden;">
+
+  <!-- Dialogue area -->
+  <div style="height:300px;padding:12px;overflow-y:auto;background:#fafafa;border-bottom:1px solid #eee;">
+    <div style="margin-bottom:10px;">
+      <span style="background:#e8ecf4;color:#2B3A67;padding:1px 6px;border-radius:2px;font-size:10px;">面试官</span>
+      <div style="padding:6px 10px;border-left:2px solid #2B3A67;background:#f0f1f5;font-size:12px;margin-top:4px;">请做一个自我介绍吧</div>
+    </div>
+    <div style="margin-bottom:10px;text-align:right;">
+      <span style="background:#eee;color:#666;padding:1px 6px;border-radius:2px;font-size:10px;">我</span>
+      <div style="padding:6px 10px;border-left:2px solid #6B7280;background:#f0f1f5;font-size:12px;margin-top:4px;text-align:left;">我是张三，5年经验...</div>
+    </div>
+  </div>
+
+  <!-- Footer - current mobile -->
+  <div style="padding:8px 10px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;border-top:1px solid #e5e7eb;">
+    <!-- Left: mic + status -->
+    <div style="display:flex;align-items:center;gap:6px;">
+      <div style="width:32px;height:32px;border-radius:50%;background:#2B3A67;display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;">🎤</div>
+      <span style="font-size:10px;color:#999;">聆听中</span>
+    </div>
+    <!-- Right: input - full width on new line -->
+    <div style="width:100%;display:flex;gap:4px;">
+      <input placeholder="或手动输入文字..." style="flex:1;height:30px;border:1px solid #dcdfe6;border-radius:4px;padding:0 8px;font-size:12px;width:100%;" />
+      <button style="height:30px;background:#2B3A67;color:#fff;border:none;border-radius:4px;padding:0 10px;font-size:11px;white-space:nowrap;">发送</button>
+    </div>
+  </div>
+
+</div>
+</div>
+</div>
+
+<!-- Problems -->
+<div style="flex:1;min-width:250px;">
+<h3>现有问题</h3>
+<div class="options" data-multiselect>
+  <div class="option" data-choice="keyboard-cover" onclick="toggleSelect(this)">
+    <div class="letter">1</div>
+    <div class="content">
+      <h3>键盘弹起遮挡</h3>
+      <p>输入框在页面底部，键盘弹出后可能遮挡输入区或对话内容，看不到面试官的回复</p>
+    </div>
+  </div>
+  <div class="option" data-choice="input-too-small" onclick="toggleSelect(this)">
+    <div class="letter">2</div>
+    <div class="content">
+      <h3>输入框太小</h3>
+      <p>单行 input + 12px 字号，手机上打面试回答完全不够用</p>
+    </div>
+  </div>
+  <div class="option" data-choice="mic-hard" onclick="toggleSelect(this)">
+    <div class="letter">3</div>
+    <div class="content">
+      <h3>麦克风操作不便</h3>
+      <p>桌面的点击切换在手机上可能误触，或者按了没反馈不知道有没有在录</p>
+    </div>
+  </div>
+  <div class="option" data-choice="layout-ugly" onclick="toggleSelect(this)">
+    <div class="letter">4</div>
+    <div class="content">
+      <h3>布局换行后很丑</h3>
+      <p>flex-wrap 导致麦克风一行、输入框另一行，视觉割裂，空间利用差</p>
+    </div>
+  </div>
+  <div class="option" data-choice="same-as-desktop" onclick="toggleSelect(this)">
+    <div class="letter">5</div>
+    <div class="content">
+      <h3>跟桌面端的改动走</h3>
+      <p>桌面端改完后，手机端自然跟进同样的统一输入栏设计，不需要另搞一套</p>
+    </div>
+  </div>
+</div>
+</div>
+
+</div>
+
+<div class="section">
+  <p style="color:#999;font-size:13px;">勾选你认为手机端最需要解决的问题（可多选），然后回来告诉我。</p>
+</div>
