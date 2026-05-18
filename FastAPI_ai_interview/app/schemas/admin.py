@@ -91,3 +91,47 @@ class InviteCodeItem(BaseModel):
 
 class InviteCodeListResponse(BaseModel):
     items: list[InviteCodeItem]
+
+
+# ── Monitor ──
+
+class MonitorUserItem(BaseModel):
+    user_id: int
+    username: str
+    role: str
+    is_online: bool
+    last_active_at: datetime | None
+    interview_count: int
+    active_interview: dict | None  # {interview_id, position}
+
+
+class MonitorUserListResponse(BaseModel):
+    items: list[MonitorUserItem]
+    total: int
+    online_count: int
+
+
+class MonitorInterviewItem(BaseModel):
+    interview_id: int
+    username: str
+    position: str
+    difficulty: str
+    mode: str
+    status: str
+    current_stage: str | None
+    started_at: datetime | None
+    duration_seconds: int | None
+    is_ws_connected: bool
+    created_at: datetime
+
+
+class MonitorInterviewListResponse(BaseModel):
+    items: list[MonitorInterviewItem]
+    total: int
+
+
+class MonitorSummaryResponse(BaseModel):
+    online_users: int
+    total_users: int
+    active_interviews: int
+    total_interviews: int

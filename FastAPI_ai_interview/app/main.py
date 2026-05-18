@@ -22,6 +22,7 @@ from app.api.v1.admin.questions import router as admin_questions_router
 from app.api.v1.admin.documents import router as admin_documents_router
 from app.api.v1.admin.users import router as admin_users_router
 from app.api.v1.admin.invite_codes import router as admin_invite_codes_router
+from app.api.v1.admin.monitor import router as admin_monitor_router
 from app.api.v1.captcha import router as captcha_router
 from app.api.v1.feedback import router as feedback_router
 from app.api.v1.messages import router as messages_router
@@ -62,6 +63,7 @@ def create_app() -> FastAPI:
     app.include_router(feedback_router)
     app.include_router(messages_router)
     app.include_router(admin_invite_codes_router)
+    app.include_router(admin_monitor_router)
 
     # Serve audio / documents via authenticated download (resumes & FAISS are never exposed)
     upload_dir = Path(settings.UPLOAD_DIR)
