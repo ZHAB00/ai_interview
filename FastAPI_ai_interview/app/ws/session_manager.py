@@ -169,6 +169,26 @@ class SessionManager:
             "status": session.get("status", "in_progress"),
         }
 
+    async def list_active_interview_ids(self) -> list[int]:
+        """Return all interview IDs that currently have active WS session state."""
+        await self._ensure_connection()
+        if not self.redis:
+            return []
+        ids = []
+        cursor = 0
+        while True:
+            cursor, keys = await self.redis.scan(
+                cursor, match="interview:*:state", count=100
+            )
+            for key in keys:
+                try:
+                    ids.append(int(key.split(":")[1]))
+                except (ValueError, IndexError):
+                    pass
+            if cursor == 0:
+                break
+        return ids
+
     @property
     def is_available(self) -> bool:
         """Check if Redis session manager is available."""
