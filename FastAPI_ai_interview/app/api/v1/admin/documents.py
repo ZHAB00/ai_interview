@@ -252,7 +252,8 @@ async def _vectorize_document(doc: Document, file_bytes: bytes, db: AsyncSession
         return
 
     # Chunk and embed
-    chunks = await chunk_text(text)
+    ext = Path(doc.file_path).suffix.lower()
+    chunks = await chunk_text(text, filename=doc.filename, ext=ext)
     if not chunks:
         doc.status = "error"
         doc.error_message = "文档内容为空或无法分块"

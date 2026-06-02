@@ -40,7 +40,9 @@ def vectorize_document_task(self, document_id: int, file_path: str, file_ext: st
             return {"status": "error", "message": "无法从文档中提取文本"}
 
         # 2. Chunk text
-        chunks = _chunk_text_sync(text)
+        from pathlib import Path as _Path
+        filename = _Path(file_path).name
+        chunks = asyncio.run(chunk_text(text, filename=filename, ext=file_ext))
         if not chunks:
             _update_doc_status(engine, document_id, "error", "文档内容为空或无法分块")
             return {"status": "error", "message": "文档内容为空或无法分块"}
@@ -116,24 +118,9 @@ def _extract_doc_text_sync(file_bytes: bytes, ext: str) -> str:
         return ""
 
 
-def _chunk_text_sync(text: str) -> list[str]:
-    """Split text into chunks (sync version)."""
-    try:
-        from langchain_text_splitters import RecursiveCharacterTextSplitter
-
-        splitter = RecursiveCharacterTextSplitter(
-            chunk_size=500,
-            chunk_overlap=50,
-            separators=["\n\n", "\n", "。", "！", "？", "；", ".", "!", "?", ";", " "],
-        )
-        chunks = splitter.split_text(text)
-        return [c.strip() for c in chunks if c.strip()]
-    except Exception as e:
-        logger.error(f"文本分块失败: {e}")
-        return []
 
 
 async def _embed_and_store(document_id: int, chunks: list[str]) -> int:
     """Embed chunks and store in FAISS index."""
-    from app.services.vector_store import add_document
+    from app.services.vector_store import add_document, chunk_text
     return await add_document(document_id, chunks)

@@ -49,6 +49,11 @@ def create_app() -> FastAPI:
         exception_handlers=EXCEPTION_HANDLERS,
     )
 
+    @app.on_event("startup")
+    async def startup_migrate_faiss():
+        from app.services.vector_store import rebuild_index
+        await rebuild_index()
+
     # Setup middleware
     setup_middleware(app)
 
