@@ -77,7 +77,7 @@ def create_app() -> FastAPI:
 
         # Prevent path traversal
         safe_name = Path(filename).name
-            if safe_name != filename:
+        if safe_name != filename:
             raise HTTPException(status_code=400, detail="Invalid filename")
 
         if sub not in ("audio", "documents"):
