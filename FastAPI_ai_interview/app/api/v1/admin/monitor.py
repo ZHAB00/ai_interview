@@ -26,6 +26,17 @@ router = APIRouter(prefix="/api/admin/monitor", tags=["管理后台-实时监控
 ONLINE_WINDOW_MINUTES = 2
 
 
+def _compare_dt(a, b) -> bool:
+    """Compare two datetimes safely regardless of timezone awareness."""
+    if a is None or b is None:
+        return False
+    if a.tzinfo is not None:
+        a = a.replace(tzinfo=None)
+    if b.tzinfo is not None:
+        b = b.replace(tzinfo=None)
+    return a > b
+
+
 @router.get("/users", response_model=MonitorUserListResponse)
 async def list_users_for_monitor(
     current_user: User = Depends(get_current_admin),
@@ -69,7 +80,7 @@ async def list_users_for_monitor(
     items = []
     online_count = 0
     for u in users:
-        is_online = u.last_active_at is not None and u.last_active_at > cutoff
+        is_online = _compare_dt(u.last_active_at, cutoff)
         if is_online:
             online_count += 1
         items.append(MonitorUserItem(
