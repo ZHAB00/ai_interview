@@ -33,7 +33,7 @@ async def list_users_for_monitor(
 ):
     """返回所有用户及其在线状态。"""
     now = datetime.now(timezone.utc)
-    cutoff = now - timedelta(minutes=ONLINE_WINDOW_MINUTES)
+    cutoff = now.replace(tzinfo=None) - timedelta(minutes=ONLINE_WINDOW_MINUTES)
 
     result = await db.execute(
         select(User).order_by(User.created_at.desc())
@@ -156,7 +156,7 @@ async def get_monitor_summary(
 ):
     """返回概览统计数字。"""
     now = datetime.now(timezone.utc)
-    cutoff = now - timedelta(minutes=ONLINE_WINDOW_MINUTES)
+    cutoff = now.replace(tzinfo=None) - timedelta(minutes=ONLINE_WINDOW_MINUTES)
 
     total_users_result = await db.execute(
         select(func.count()).select_from(User)
