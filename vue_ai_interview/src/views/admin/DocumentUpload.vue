@@ -1,20 +1,23 @@
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { uploadDocument, getDocuments, deleteDocument } from '../../services/adminService.js'
+import { uploadDocument, getDocuments, deleteDocument, reprocessDocument } from '../../services/adminService.js'
 
-// --- State ---
 const loading = ref(false)
 const saving = ref(false)
 const list = ref([])
 const dialogVisible = ref(false)
+const currentPage = ref(1)
+const pageSize = ref(20)
+const total = ref(0)
+let pollTimer = null
+
 const form = reactive({
   description: '',
   tags: ''
 })
 const uploadFileList = ref([])
 
-// --- Upload ---
 function handleUpload() {
   if (!uploadFileList.value.length) return
 
@@ -32,22 +35,21 @@ function handleUpload() {
       uploadFileList.value = []
       form.description = ''
       form.tags = ''
+      currentPage.value = 1
       loadList()
     })
     .catch(err => {
       ElMessage.error(err.response?.data?.error?.message || '上传失败')
     })
-    .finally(() => {
-      saving.value = false
-    })
+    .finally(() => { saving.value = false })
 }
 
-// --- List ---
 async function loadList() {
   loading.value = true
   try {
-    const { data } = await getDocuments({ page: 1, page_size: 50 })
+    const { data } = await getDocuments({ page: currentPage.value, page_size: pageSize.value })
     list.value = data.items || []
+    total.value = data.total || 0
   } catch {
     list.value = []
   } finally {
@@ -55,23 +57,60 @@ async function loadList() {
   }
 }
 
-// --- Delete ---
 async function handleDelete(row) {
   try {
     await ElMessageBox.confirm('确定删除该文档吗？FAISS 向量索引将同步清除', '删除确认', {
-      type: 'warning',
-      confirmButtonText: '确定',
-      cancelButtonText: '取消'
+      type: 'warning', confirmButtonText: '确定', cancelButtonText: '取消'
     })
     await deleteDocument(row.id)
     ElMessage.success('文档已删除')
+    currentPage.value = 1
     loadList()
-  } catch {
-    // cancelled
+  } catch {}
+}
+
+async function handleReprocess(row) {
+  try {
+    await reprocessDocument(row.id)
+    ElMessage.success('已提交重新处理')
+    row.status = 'processing'
+    startPolling()
+  } catch (err) {
+    ElMessage.error(err.response?.data?.error?.message || '重处理失败')
   }
 }
 
-// --- Utils ---
+function hasProcessing() {
+  return list.value.some(d => d.status === 'processing')
+}
+
+function startPolling() {
+  stopPolling()
+  pollTimer = setInterval(async () => {
+    if (!hasProcessing()) {
+      stopPolling()
+      return
+    }
+    try {
+      const { data } = await getDocuments({ page: currentPage.value, page_size: pageSize.value })
+      list.value = data.items || []
+      total.value = data.total || 0
+    } catch {}
+  }, 3000)
+}
+
+function stopPolling() {
+  if (pollTimer) {
+    clearInterval(pollTimer)
+    pollTimer = null
+  }
+}
+
+function onPageChange(page) {
+  currentPage.value = page
+  loadList()
+}
+
 function statusConfig(status) {
   const map = {
     processing: { text: '处理中', type: 'warning' },
@@ -94,7 +133,12 @@ function tagList(val) {
   return []
 }
 
-onMounted(loadList)
+onMounted(async () => {
+  await loadList()
+  if (hasProcessing()) startPolling()
+})
+
+onUnmounted(stopPolling)
 </script>
 
 <template>
@@ -133,16 +177,28 @@ onMounted(loadList)
       <el-table-column label="上传时间" width="160">
         <template #default="{ row }">{{ formatTime(row.created_at) }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="80" align="center">
+      <el-table-column label="操作" width="120" align="center">
         <template #default="{ row }">
+          <el-button v-if="row.status === 'error'" text size="small" type="warning" @click="handleReprocess(row)">
+            重处理
+          </el-button>
           <el-button text size="small" type="danger" @click="handleDelete(row)">删除</el-button>
         </template>
       </el-table-column>
     </el-table>
 
+    <div v-if="total > pageSize" style="display: flex; justify-content: center; margin-top: 16px;">
+      <el-pagination
+        v-model:current-page="currentPage"
+        :page-size="pageSize"
+        :total="total"
+        layout="prev, pager, next"
+        @current-change="onPageChange"
+      />
+    </div>
+
     <el-empty v-if="!loading && !list.length" description="暂无文档" />
 
-    <!-- Upload Dialog -->
     <el-dialog v-model="dialogVisible" title="上传文档" width="480px" :close-on-click-modal="false">
       <el-form :model="form" label-position="top">
         <el-form-item label="选择文件">

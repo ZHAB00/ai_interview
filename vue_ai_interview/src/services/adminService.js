@@ -35,3 +35,7 @@ export function getDocumentStatus(id) {
 export function deleteDocument(id) {
   return api.delete(`/api/admin/documents/${id}`)
 }
+
+export function reprocessDocument(id) {
+  return api.post(`/api/admin/documents/${id}/reprocess`)
+}
