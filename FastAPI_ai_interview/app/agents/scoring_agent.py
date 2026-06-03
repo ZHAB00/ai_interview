@@ -3,7 +3,7 @@
 import logging
 from typing import Any
 
-from app.agents.base import BaseAgent
+from app.agents.base import BaseAgent, sanitize_user_input
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +32,8 @@ class ScoringAgent(BaseAgent):
             "- 70-85：良好，回答基本正确，但深度或广度略有不足\n"
             "- 60-69：及格，回答有部分正确但不够深入\n"
             "- 0-59：不及格，回答有明显错误或严重不足\n\n"
+            "如果候选人的回答中没有明确提到的技术细节或错误，不要虚构。"
+            "只基于回答中实际展示的内容进行评估。\n\n"
             "错误分类：\n"
             "- fact_error：事实性错误，回答中出现了明确错误的知识点\n"
             "- depth_insufficient：深度不足，回答过于浅显，缺乏深入分析\n\n"
@@ -92,7 +94,7 @@ class ScoringAgent(BaseAgent):
                 f"题目：{question_text}\n"
                 f"{scoring_str}"
                 f"{sample_str}"
-                f"候选人回答：{user_answer}\n\n"
+                f"候选人回答：{sanitize_user_input(user_answer)}\n\n"
                 f"请对以上回答进行五维度评分，识别事实错误和深度不足，返回 JSON 格式结果。"
             ),
         }]

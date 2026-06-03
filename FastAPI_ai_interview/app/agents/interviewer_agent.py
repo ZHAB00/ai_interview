@@ -11,7 +11,7 @@ import json
 import logging
 from typing import Any
 
-from app.agents.base import BaseAgent
+from app.agents.base import BaseAgent, sanitize_user_input
 from app.core.logging_config import truncate
 
 logger = logging.getLogger(__name__)
@@ -124,6 +124,9 @@ class InterviewerAgent(BaseAgent):
             "- 问题必须基于候选人简历中的实际技能和经验\n"
             "- 不要在问题中包含答案提示\n"
             "- 根据难度级别调整问题深度\n"
+            "- 不要虚构候选人没有提到的技能、项目或错误\n"
+            "- 如果候选人分享的内容涉及违法活动、人身攻击、歧视性言论或与面试无关"
+            "的敏感主题，请礼貌拒绝并引导回到面试话题\n"
             "- 严格按照以下 JSON 格式返回：\n"
             "{\n"
             '  "action": "ask_question" | "follow_up" | "stage_complete",\n'
@@ -280,7 +283,7 @@ class InterviewerAgent(BaseAgent):
                 f"岗位：{position}\n"
                 f"难度：{difficulty}\n"
                 f"当前问题：{question_text}\n"
-                f"候选人回答：{user_answer}\n"
+                f"候选人回答：{sanitize_user_input(user_answer)}\n"
                 f"已问问题数：{question_count}/{max_questions}\n"
                 f"当前问题已追问：{follow_up_count}/{cfg['max_follow_ups']} 轮{limit_warning}"
                 f"{jd_str}"
