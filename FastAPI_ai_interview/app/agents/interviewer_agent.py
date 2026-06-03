@@ -147,12 +147,14 @@ class InterviewerAgent(BaseAgent):
         projects: list[dict] | None = None,
         examples: list[dict] | None = None,
         jd_analysis: dict[str, Any] | None = None,
+        kb_documents: list[dict] | None = None,
     ) -> dict[str, Any]:
         """Generate the first question for a new stage, driven by resume content.
 
         Args:
             examples: Few-shot examples from question bank for reference style/quality.
             jd_analysis: JD analysis result with skills/requirements for targeted questions.
+            kb_documents: Retrieved chunks from knowledge base documents.
         """
         self._stage = stage
         self._cfg = STAGE_CONFIG.get(stage, STAGE_CONFIG["初筛"])
@@ -176,6 +178,14 @@ class InterviewerAgent(BaseAgent):
                 )
                 if ex.get("follow_up_hints"):
                     examples_str += f"  追问方向: {'; '.join(ex['follow_up_hints'][:2])}\n"
+
+        # Knowledge base — reference docs uploaded for this position
+        kb_str = ""
+        if kb_documents:
+            kb_str = "\n\n【知识库参考文档】\n"
+            for i, doc in enumerate(kb_documents[:3], 1):
+                kb_str += f"\n参考{i} (score={doc['score']:.2f}): {doc['text'][:500]}\n"
+            kb_str += "出题时可以引用知识库中的概念、技术标准或方法论。\n"
 
         # JD context — prioritize company requirements over resume self-reported skills
         jd_str = ""
@@ -201,6 +211,7 @@ class InterviewerAgent(BaseAgent):
                 f"难度：{difficulty}\n"
                 f"候选人核心技能：{skill_str}{project_str}"
                 f"{jd_str}"
+                f"{kb_str}"
                 f"{examples_str}\n\n"
                 f"{cfg['question_guide']}\n\n"
                 f"请以面试官身份开始【{stage}】阶段，action 应为 ask_question，question_count_in_stage 为 1。"
@@ -225,6 +236,7 @@ class InterviewerAgent(BaseAgent):
         max_questions: int | None = None,
         follow_up_count: int = 0,
         jd_analysis: dict[str, Any] | None = None,
+        kb_documents: list[dict] | None = None,
     ) -> dict[str, Any]:
         """Evaluate answer with stage-specific strictness and follow-up strategy."""
         self._stage = stage
@@ -242,6 +254,14 @@ class InterviewerAgent(BaseAgent):
                 f"\n⚠️ 硬性限制：当前题目已追问 {follow_up_count}/{cfg['max_follow_ups']} 轮，"
                 f"只剩 {remaining} 轮追问额度。如果回答不够深入，请直接 ask_question 换题或 stage_complete 结束，不要继续追问。\n"
             )
+
+        # Knowledge base context for evaluation
+        kb_str = ""
+        if kb_documents:
+            kb_str = "\n\n【知识库参考】\n"
+            for i, doc in enumerate(kb_documents[:3], 1):
+                kb_str += f"{i}. {doc['text'][:400]}\n"
+            kb_str += "评估时可对照知识库内容判断候选人回答的准确性和深度。\n"
 
         # JD context for evaluation
         jd_str = ""
@@ -263,7 +283,8 @@ class InterviewerAgent(BaseAgent):
                 f"候选人回答：{user_answer}\n"
                 f"已问问题数：{question_count}/{max_questions}\n"
                 f"当前问题已追问：{follow_up_count}/{cfg['max_follow_ups']} 轮{limit_warning}"
-                f"{jd_str}\n"
+                f"{jd_str}"
+                f"{kb_str}\n"
                 f"{cfg['evaluate_guide']}\n\n"
                 f"请评估候选人的回答质量，严格按阶段要求决定下一步。"
             ),

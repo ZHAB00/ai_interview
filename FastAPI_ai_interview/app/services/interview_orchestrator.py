@@ -214,6 +214,9 @@ class InterviewOrchestrator:
             f"stage={self.current_stage()}, score={score_result.get('total_score')}"
         )
 
+        # Search knowledge base docs relevant to current question
+        kb_docs = await self.rag_service.search_documents(query=question_text, top_k=3)
+
         # Evaluate answer with stage-specific max questions + follow_up limit
         stage_cfg = STAGE_CONFIG.get(self.current_stage(), STAGE_CONFIG["初筛"])
         max_q = stage_cfg["max_questions"]
@@ -227,6 +230,7 @@ class InterviewOrchestrator:
             max_questions=max_q,
             follow_up_count=self.follow_up_count,
             jd_analysis=self.interview.jd_analysis,
+            kb_documents=kb_docs,
         )
 
         action = evaluation.get("action", "ask_question")
@@ -440,9 +444,11 @@ class InterviewOrchestrator:
             difficulty=self.interview.difficulty,
             limit=3,
         )
+        # Search knowledge base documents for relevant context
+        kb_docs = await self.rag_service.search_documents(query=stage, top_k=3)
         logger.info(
             f"题库示例匹配: stage={stage}, skills={self.top_skills}, "
-            f"examples_found={len(examples)}"
+            f"examples_found={len(examples)}, kb_docs_found={len(kb_docs)}"
         )
         result = await self.interviewer.start_stage(
             stage=stage,
@@ -452,6 +458,7 @@ class InterviewOrchestrator:
             projects=self.projects,
             examples=examples,
             jd_analysis=self.interview.jd_analysis,
+            kb_documents=kb_docs,
         )
         question_text = result.get("question_text") or ""
         skill_tags = result.get("skill_tags", [])
