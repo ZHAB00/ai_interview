@@ -24,10 +24,40 @@ _write_lock = asyncio.Lock()
 def _get_embedding_model():
     global _embedding_model
     if _embedding_model is None:
-        from sentence_transformers import SentenceTransformer
+        from pathlib import Path as _Path
+
         model_name = "BAAI/bge-small-zh-v1.5"
-        _embedding_model = SentenceTransformer(model_name)
-        logger.info(f"Embedding model loaded: {model_name}")
+        cache_root = (_VECTOR_DIR.parent / "models").resolve()
+        model_dir = cache_root / "bge-small-zh-v1.5"
+
+        # Find model in cache (ModelScope or HuggingFace)
+        if not model_dir.exists():
+            # ModelScope caches as BAAI/bge-small-zh-v1___5 nested dirs
+            for d in cache_root.glob("**/bge-small-zh*"):
+                if d.is_dir():
+                    model_dir = d
+                    break
+
+        if not model_dir.exists():
+            try:
+                from modelscope.hub.snapshot_download import snapshot_download
+                snapshot_download("BAAI/bge-small-zh-v1.5", cache_dir=str(cache_root))
+                for d in cache_root.glob("**/bge-small-zh*"):
+                    if d.is_dir():
+                        model_dir = d
+                        break
+                logger.info(f"ModelScope downloaded: {model_dir}")
+            except Exception as e:
+                logger.warning(f"ModelScope failed: {e}, falling back to HuggingFace")
+                import os as _os
+                _os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
+
+        from sentence_transformers import SentenceTransformer
+        if model_dir.exists():
+            _embedding_model = SentenceTransformer(str(model_dir.resolve()))
+        else:
+            _embedding_model = SentenceTransformer(model_name)
+        logger.info(f"Embedding model loaded from: {model_dir if model_dir.exists() else 'hub'}")
     return _embedding_model
 
 

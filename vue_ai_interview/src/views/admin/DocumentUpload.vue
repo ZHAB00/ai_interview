@@ -28,18 +28,20 @@ function handleUpload() {
   if (form.tags) formData.append('tags', form.tags)
 
   saving.value = true
+  dialogVisible.value = false
+  uploadFileList.value = []
+  form.description = ''
+  form.tags = ''
+
   uploadDocument(formData)
     .then(() => {
       ElMessage.success('文档已上传，正在向量化处理')
-      dialogVisible.value = false
-      uploadFileList.value = []
-      form.description = ''
-      form.tags = ''
       currentPage.value = 1
       loadList()
     })
     .catch(err => {
       ElMessage.error(err.response?.data?.error?.message || '上传失败')
+      loadList()
     })
     .finally(() => { saving.value = false })
 }

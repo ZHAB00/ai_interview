@@ -229,6 +229,7 @@ async def reprocess_document(
         try:
             await _vectorize_document(doc, file_bytes, db)
         except Exception as ve:
+            logger.error(f"向量化异常: doc_id={doc.id} file={doc.file_path} — {ve}", exc_info=True)
             doc.status = "error"
             doc.error_message = str(ve)
             await db.commit()
@@ -244,24 +245,37 @@ async def _vectorize_document(doc: Document, file_bytes: bytes, db: AsyncSession
     """Extract text, chunk, embed, and store in FAISS."""
     from app.services.vector_store import add_document, chunk_text
 
-    # Extract text from file
-    text = await _extract_doc_text(file_bytes, Path(doc.file_path).suffix.lower())
+    logger.info(f"向量化开始: doc_id={doc.id} path={doc.file_path} file_bytes_len={len(file_bytes)}")
+    ext = Path(doc.file_path).suffix.lower()
+    text = await _extract_doc_text(file_bytes, ext)
+    logger.info(f"向量化 text提取: doc_id={doc.id} ext={ext} text_len={len(text) if text else 0}")
     if not text:
         doc.status = "error"
         doc.error_message = "无法从文档中提取文本"
+        logger.error(f"向量化失败: doc_id={doc.id} ext={ext} — 无法提取文本")
+        await db.commit()
         return
 
     # Chunk and embed
-    ext = Path(doc.file_path).suffix.lower()
     chunks = await chunk_text(text, filename=doc.filename, ext=ext)
     if not chunks:
         doc.status = "error"
         doc.error_message = "文档内容为空或无法分块"
+        logger.error(f"向量化失败: doc_id={doc.id} ext={ext} — 分块结果为空")
+        await db.commit()
         return
 
     count = await add_document(doc.id, chunks)
+    if count == 0:
+        doc.status = "error"
+        doc.error_message = "向量化失败"
+        logger.error(f"向量化失败: doc_id={doc.id} ext={ext} — add_document 返回 0")
+        await db.commit()
+        return
+
     doc.status = "ready"
     doc.chunks_count = count
+    await db.commit()
     logger.info(f"文档向量化完成: doc_id={doc.id}, chunks={count}")
 
 
