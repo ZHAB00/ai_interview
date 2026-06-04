@@ -26,6 +26,13 @@ def _get_embedding_model():
     global _embedding_model
     if _embedding_model is None:
         from pathlib import Path as _Path
+        import os as _os
+
+        # Set HF cache to writable dir BEFORE any model load attempt
+        _os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
+        model_cache = (_VECTOR_DIR.parent / "models").resolve()
+        model_cache.mkdir(parents=True, exist_ok=True)
+        _os.environ["HF_HOME"] = str(model_cache)
 
         model_name = "BAAI/bge-small-zh-v1.5"
         cache_root = (_VECTOR_DIR.parent / "models").resolve()
@@ -53,11 +60,6 @@ def _get_embedding_model():
                 _os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
 
         from sentence_transformers import SentenceTransformer
-        import os as _os
-        _os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
-        model_cache = (_VECTOR_DIR.parent / "models").resolve()
-        model_cache.mkdir(parents=True, exist_ok=True)
-        _os.environ["HF_HOME"] = str(model_cache)
         if model_dir.exists():
             try:
                 _embedding_model = SentenceTransformer(str(model_dir.resolve()))
