@@ -53,6 +53,9 @@ def _get_embedding_model():
                 _os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
 
         from sentence_transformers import SentenceTransformer
+        import os as _os
+        _os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
+        _os.environ.setdefault("HF_HOME", str((_VECTOR_DIR.parent / "models").resolve()))
         if model_dir.exists():
             try:
                 _embedding_model = SentenceTransformer(str(model_dir.resolve()))
