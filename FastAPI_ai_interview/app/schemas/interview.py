@@ -54,5 +54,6 @@ class InterviewHistoryResponse(BaseModel):
 
 
 class ReportStatusResponse(BaseModel):
-    status: str  # "generating" | "completed"
+    status: str  # "generating" | "completed" | "error"
     report: dict[str, Any] | None = None
+    error_message: str | None = None

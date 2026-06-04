@@ -3,7 +3,7 @@
 import logging
 from typing import Any
 
-from app.agents.base import BaseAgent
+from app.agents.base import BaseAgent, sanitize_user_input
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +41,7 @@ class ResumeAgent(BaseAgent):
                 "role": "user",
                 "content": (
                     f"目标岗位：{position}\n\n"
-                    f"简历文本：\n{resume_text[:8000]}"
+                    f"简历文本：\n{sanitize_user_input(resume_text[:8000])}"
                 ),
             }
         ]

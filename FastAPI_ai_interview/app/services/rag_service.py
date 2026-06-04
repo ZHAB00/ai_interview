@@ -61,7 +61,13 @@ class RAGService:
             # Skill match: each matching tag adds 10 points
             if skill_set and q.skill_tags:
                 for tag in q.skill_tags:
-                    if tag.lower() in skill_set or any(s in tag.lower() for s in skill_set):
+                    tag_lower = tag.lower()
+                    # Exact or word-boundary match to avoid "Java" → "JavaScript"
+                    if tag_lower in skill_set or any(
+                        s in tag_lower.split() or tag_lower in s.split()
+                        or f" {s} " in f" {tag_lower} "
+                        for s in skill_set
+                    ):
                         score += 10
             # Position match: 5 points
             if position_lower and q.position_tags:

@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_admin, get_current_user, get_db
+from app.core.config import settings
 from app.core.exceptions import ConflictException, UnauthorizedException, ValidationErrorException
 from app.core.security import (
     create_access_token,
@@ -35,6 +36,36 @@ from app.schemas.auth import (
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/auth", tags=["认证"])
+
+_LOGIN_ATTEMPT_LIMIT = 5
+_LOGIN_WINDOW_SEC = 300
+
+
+async def _is_login_rate_limited(phone: str) -> bool:
+    """Check if login attempts for this phone exceed the limit."""
+    import redis.asyncio as redis
+    try:
+        r = redis.from_url(settings.REDIS_URL, decode_responses=True)
+        attempts = await r.get(f"login_attempts:{phone}")
+        await r.aclose()
+        return attempts is not None and int(attempts) >= _LOGIN_ATTEMPT_LIMIT
+    except Exception:
+        return False
+
+
+async def _record_failed_login(phone: str) -> None:
+    """Increment the failed login counter for this phone."""
+    import redis.asyncio as redis
+    try:
+        r = redis.from_url(settings.REDIS_URL, decode_responses=True)
+        key = f"login_attempts:{phone}"
+        pipe = r.pipeline()
+        pipe.incr(key)
+        pipe.expire(key, _LOGIN_WINDOW_SEC)
+        await pipe.execute()
+        await r.aclose()
+    except Exception:
+        pass
 
 
 def _validate_password_strength(password: str) -> None:
@@ -150,10 +181,15 @@ async def register(req: RegisterRequest, db: AsyncSession = Depends(get_db)):
 @router.post("/login", response_model=LoginResponse)
 async def login(req: LoginRequest, db: AsyncSession = Depends(get_db)):
     """用户登录：手机号+密码，返回 JWT 令牌对。"""
+    # Rate limit check before DB query
+    if await _is_login_rate_limited(req.phone):
+        raise ValidationErrorException("登录尝试过于频繁，请5分钟后再试")
+
     result = await db.execute(select(User).where(User.phone == req.phone))
     user = result.scalar_one_or_none()
 
     if not user or not verify_password(req.password, user.password_hash):
+        await _record_failed_login(req.phone)
         raise UnauthorizedException("账号或密码错误")
 
     access_token = create_access_token(

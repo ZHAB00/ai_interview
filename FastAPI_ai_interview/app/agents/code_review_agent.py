@@ -3,7 +3,7 @@
 import logging
 from typing import Any
 
-from app.agents.base import BaseAgent
+from app.agents.base import BaseAgent, sanitize_user_input
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +65,7 @@ class CodeReviewAgent(BaseAgent):
                 f"题目描述：{question_description}\n"
                 f"编程语言：{language}\n"
                 f"面试难度：{difficulty}\n\n"
-                f"候选人提交的代码：\n```{language}\n{code[:8000]}\n```\n\n"
+                f"候选人提交的代码：\n{sanitize_user_input(code[:8000])}\n\n"
                 f"请对以上代码进行评审，返回JSON格式结果。"
             ),
         }]

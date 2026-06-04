@@ -473,6 +473,9 @@ async def get_report(
     if not report or report.status == "generating":
         return ReportStatusResponse(status="generating")
     elif report.status == "error":
-        return ReportStatusResponse(status="generating")
+        return ReportStatusResponse(
+            status="error",
+            error_message=report.report_data.get("error", "报告生成失败") if report.report_data else "报告生成失败",
+        )
     else:
         return ReportStatusResponse(status="completed", report=report.report_data)

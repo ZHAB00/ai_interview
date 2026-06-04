@@ -1,5 +1,6 @@
 """Base agent class with LLM call abstraction — powered by LangChain."""
 
+import asyncio
 import json
 import logging
 from abc import ABC, abstractmethod
@@ -11,6 +12,9 @@ from app.core.config import settings
 from app.core.logging_config import truncate
 
 logger = logging.getLogger(__name__)
+
+LLM_MAX_RETRIES = 3
+LLM_RETRY_BASE_DELAY = 1.0  # seconds, exponential backoff
 
 
 def sanitize_user_input(text: str) -> str:
@@ -94,21 +98,31 @@ class BaseAgent(ABC):
             f"prompt_preview={truncate(last_user_msg)}"
         )
 
-        try:
-            invoke_kwargs = {
-                "temperature": temperature,
-                "max_tokens": max_tokens,
-            }
-            if response_format:
-                invoke_kwargs["response_format"] = response_format
+        last_exc = None
+        for attempt in range(LLM_MAX_RETRIES + 1):
+            try:
+                invoke_kwargs = {
+                    "temperature": temperature,
+                    "max_tokens": max_tokens,
+                }
+                if response_format:
+                    invoke_kwargs["response_format"] = response_format
 
-            response = await self.client.ainvoke(full_messages, **invoke_kwargs)
-            content = response.content or ""
-            logger.debug(f"LLM响应: len={len(content)}, preview={truncate(content)}")
-            return content
-        except Exception as e:
-            logger.error(f"LLM call failed: {e}", exc_info=True)
-            raise
+                response = await self.client.ainvoke(full_messages, **invoke_kwargs)
+                content = response.content or ""
+                logger.debug(f"LLM响应: len={len(content)}, preview={truncate(content)}")
+                return content
+            except Exception as e:
+                last_exc = e
+                if attempt < LLM_MAX_RETRIES:
+                    delay = LLM_RETRY_BASE_DELAY * (2 ** attempt)
+                    logger.warning(
+                        f"LLM call failed (attempt {attempt + 1}/{LLM_MAX_RETRIES + 1}), "
+                        f"retrying in {delay:.1f}s: {e}"
+                    )
+                    await asyncio.sleep(delay)
+        logger.error(f"LLM call failed after {LLM_MAX_RETRIES + 1} attempts: {last_exc}", exc_info=True)
+        raise last_exc
 
     async def llm_call_json(
         self,
@@ -158,8 +172,13 @@ class BaseAgent(ABC):
         for key, validator in OUTPUT_VALIDATORS.items():
             if key in result:
                 try:
-                    result[key] = validator(result[key])
+                    original = result[key]
+                    clamped = validator(result[key])
+                    if clamped != original:
+                        logger.warning(f"LLM输出越界已clamp: {key}={original} → {clamped}")
+                    result[key] = clamped
                 except (ValueError, TypeError):
+                    logger.warning(f"LLM输出字段无法校验: {key}={result.get(key)}")
                     pass
         logger.debug(f"LLM JSON解析完成: keys={list(result.keys())}")
         return result

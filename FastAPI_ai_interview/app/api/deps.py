@@ -50,8 +50,11 @@ async def get_current_user(
         raise UnauthorizedException(message="账号已被禁用")
 
     # Update last_active_at for online status tracking (admin monitor)
-    user.last_active_at = datetime.now(timezone.utc)
-    await db.commit()
+    # Throttle: only write if last update was > 30s ago
+    now = datetime.now(timezone.utc)
+    if user.last_active_at is None or (now - user.last_active_at.replace(tzinfo=timezone.utc)).total_seconds() > 30:
+        user.last_active_at = now
+        await db.commit()
 
     return user
 

@@ -14,6 +14,7 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 _embedding_model = None
+_redis_pool = None
 _VECTOR_DIR = Path(settings.FAISS_DIR)
 _UNIFIED_INDEX = _VECTOR_DIR / "unified.faiss"
 _UNIFIED_REGISTRY = _VECTOR_DIR / "unified.registry.json"
@@ -84,11 +85,18 @@ def _cache_key(query: str) -> str:
     return f"emb:{hashlib.md5(query.encode()).hexdigest()}"
 
 
+async def _get_redis():
+    global _redis_pool
+    if _redis_pool is None:
+        import redis.asyncio as redis
+        _redis_pool = redis.from_url(settings.REDIS_URL, decode_responses=False)
+    return _redis_pool
+
+
 async def _cached_embed_query(query: str) -> list[float]:
-    import redis.asyncio as redis
+    key = _cache_key(query)
     try:
-        r = redis.from_url(settings.REDIS_URL, decode_responses=False)
-        key = _cache_key(query)
+        r = await _get_redis()
         cached = await r.get(key)
         if cached:
             return list(np.frombuffer(cached, dtype=np.float32))
@@ -102,7 +110,7 @@ async def _cached_embed_query(query: str) -> list[float]:
     result = embedding[0].tolist()
 
     try:
-        r = redis.from_url(settings.REDIS_URL)
+        r = await _get_redis()
         await r.setex(key, 3600, np.array(result, dtype=np.float32).tobytes())
     except Exception:
         pass
@@ -253,21 +261,28 @@ async def search_all(
     limit = min(top_k * 3, index.ntotal) or top_k
     scores, ids = index.search(query_np, limit)
 
+    # Build vid→(doc_id, idx) lookup in O(docs) since vector IDs are sequential per doc
+    vid_map: dict[int, tuple[int, int]] = {}
+    for doc_id_str, info in docs.items():
+        vids = info["vector_ids"]
+        if vids:
+            base = vids[0]
+            for i in range(len(vids)):
+                vid_map[base + i] = (int(doc_id_str), i)
+
     results = []
     for score, vid in zip(scores[0], ids[0]):
-        if vid < 0:
+        if vid < 0 or vid not in vid_map:
             continue
-        for doc_id_str, info in docs.items():
-            if vid in info["vector_ids"]:
-                idx = vid - info["vector_ids"][0]
-                if 0 <= idx < len(info["chunks"]):
-                    results.append({
-                        "document_id": int(doc_id_str),
-                        "chunk_index": idx,
-                        "text": info["chunks"][idx],
-                        "score": float(score),
-                    })
-                break
+        doc_id, idx = vid_map[vid]
+        chunks = docs[str(doc_id)]["chunks"]
+        if 0 <= idx < len(chunks):
+            results.append({
+                "document_id": doc_id,
+                "chunk_index": idx,
+                "text": chunks[idx],
+                "score": float(score),
+            })
 
     results.sort(key=lambda x: x["score"], reverse=True)
     return results[:top_k]
