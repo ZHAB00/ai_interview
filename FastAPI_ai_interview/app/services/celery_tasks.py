@@ -40,6 +40,7 @@ def vectorize_document_task(self, document_id: int, file_path: str, file_ext: st
             return {"status": "error", "message": "无法从文档中提取文本"}
 
         # 2. Chunk text
+        from app.services.vector_store import chunk_text
         from pathlib import Path as _Path
         filename = _Path(file_path).name
         chunks = asyncio.run(chunk_text(text, filename=filename, ext=file_ext))
