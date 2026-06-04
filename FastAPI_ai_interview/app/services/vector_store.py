@@ -55,7 +55,9 @@ def _get_embedding_model():
         from sentence_transformers import SentenceTransformer
         import os as _os
         _os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
-        _os.environ.setdefault("HF_HOME", str((_VECTOR_DIR.parent / "models").resolve()))
+        model_cache = (_VECTOR_DIR.parent / "models").resolve()
+        model_cache.mkdir(parents=True, exist_ok=True)
+        _os.environ["HF_HOME"] = str(model_cache)
         if model_dir.exists():
             try:
                 _embedding_model = SentenceTransformer(str(model_dir.resolve()))
