@@ -33,7 +33,6 @@ def _get_embedding_model():
 
         # Find model in cache (ModelScope or HuggingFace)
         if not model_dir.exists():
-            # ModelScope caches as BAAI/bge-small-zh-v1___5 nested dirs
             for d in cache_root.glob("**/bge-small-zh*"):
                 if d.is_dir():
                     model_dir = d
@@ -55,10 +54,16 @@ def _get_embedding_model():
 
         from sentence_transformers import SentenceTransformer
         if model_dir.exists():
-            _embedding_model = SentenceTransformer(str(model_dir.resolve()))
+            try:
+                _embedding_model = SentenceTransformer(str(model_dir.resolve()))
+            except Exception as e:
+                logger.warning(f"Local model load failed ({e}), downloading from hub...")
+                import shutil
+                shutil.rmtree(str(model_dir.resolve()), ignore_errors=True)
+                _embedding_model = SentenceTransformer(model_name)
         else:
             _embedding_model = SentenceTransformer(model_name)
-        logger.info(f"Embedding model loaded from: {model_dir if model_dir.exists() else 'hub'}")
+        logger.info(f"Embedding model loaded: {model_name}")
     return _embedding_model
 
 
