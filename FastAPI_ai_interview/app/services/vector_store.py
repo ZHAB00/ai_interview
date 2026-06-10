@@ -273,9 +273,16 @@ async def search_all(
     limit = min(top_k * 3, index.ntotal) or top_k
     scores, ids = index.search(query_np, limit)
 
+    # Filter by document_ids if provided (tag-based filtering)
+    allowed_ids: set[str] | None = None
+    if document_ids:
+        allowed_ids = set(str(did) for did in document_ids)
+
     # Build vid→(doc_id, idx) lookup in O(docs) since vector IDs are sequential per doc
     vid_map: dict[int, tuple[int, int]] = {}
     for doc_id_str, info in docs.items():
+        if allowed_ids and doc_id_str not in allowed_ids:
+            continue
         vids = info["vector_ids"]
         if vids:
             base = vids[0]

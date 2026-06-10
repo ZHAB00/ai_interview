@@ -597,6 +597,7 @@ class QwenTTSProvider(BaseTTSProvider):
         )
 
         kwargs = dict(model=self.model, text=text, voice=self.voice, stream=True)
+        kwargs["speech_rate"] = settings.TTS_SPEECH_RATE
         # language_type only for models that support it (e.g. qwen-tts uses 'zh')
         # qwen3-tts-instruct-flash auto-detects — passing it with wrong case fails
         if self.language:

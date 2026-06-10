@@ -13,7 +13,8 @@ export function useWebSocket(options = {}) {
     onJsonMessage = () => {},
     onAudioChunk = () => {},
     onStatusChange = () => {},
-    onAuthFailure = null  // called when WS closes with 4001 (auth failed)
+    onAuthFailure = null,  // called when WS closes with 4001 (auth failed)
+    onInterviewEnded = null,  // called when WS closes with 4000 (interview ended)
   } = options
 
   const wsStatus = ref('disconnected') // connecting | connected | reconnecting | disconnected
@@ -66,6 +67,12 @@ export function useWebSocket(options = {}) {
         if (event.code === 4001) {
           setStatus('disconnected')
           if (onAuthFailure) onAuthFailure()
+          return
+        }
+        // Interview ended — redirect to report
+        if (event.code === 4000) {
+          setStatus('disconnected')
+          if (onInterviewEnded) onInterviewEnded()
           return
         }
         // Normal closure or terminal codes — do not reconnect

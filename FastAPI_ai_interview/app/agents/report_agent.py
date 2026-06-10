@@ -54,6 +54,7 @@ class ReportAgent(BaseAgent):
         match_feedback: str | None = None,
         stage_summaries: list[dict] | None = None,
         jd_analysis: dict[str, Any] | None = None,
+        kb_documents: list[dict] | None = None,
     ) -> dict[str, Any]:
         """Generate the full interview report."""
         logger.info(f"开始生成报告: position={position}, answer_count={len(answers)}")
@@ -101,6 +102,13 @@ class ReportAgent(BaseAgent):
                 for s in stage_summaries
             ) + "\n"
 
+        kb_info = ""
+        if kb_documents:
+            kb_info = "\n【知识库参考 — 评估候选人时可对照】\n"
+            for i, doc in enumerate(kb_documents[:3], 1):
+                kb_info += f"{i}. {doc['text'][:400]}\n"
+            kb_info += "请在报告中对照以上知识库内容，指出候选人是否掌握了文档中的关键知识点。\n"
+
         messages = [{
             "role": "user",
             "content": (
@@ -108,6 +116,7 @@ class ReportAgent(BaseAgent):
                 f"难度：{difficulty}\n"
                 f"{match_info}"
                 f"{jd_info}"
+                f"{kb_info}"
                 f"{stage_info}\n"
                 f"各题回答及评分：\n{answers_summary}\n\n"
                 f"请基于以上信息生成面试报告摘要，包括总体评价、各阶段总结、"

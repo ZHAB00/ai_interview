@@ -187,7 +187,11 @@ class InterviewOrchestrator:
             except (json.JSONDecodeError, TypeError):
                 pass
 
-        # Real-time scoring
+        # Search knowledge base docs relevant to current question (before scoring)
+        kb_docs = await self._search_kb(query=question_text, top_k=5)
+
+        # Real-time scoring (all answers scored 0-100)
+        is_follow_up = bool(self.current_question.get("is_follow_up", False))
         score_result = await self.scoring_service.score_answer(
             question_text=question_text,
             user_answer=text,
@@ -195,6 +199,7 @@ class InterviewOrchestrator:
             stage=self.current_stage(),
             position=self.interview.position,
             difficulty=self.interview.difficulty,
+            kb_documents=kb_docs,
         )
 
         # Build structured answer record
@@ -207,15 +212,13 @@ class InterviewOrchestrator:
             score_result=score_result,
         )
         answer_record["skill_tags"] = self.current_question.get("skill_tags", [])
+        answer_record["is_follow_up"] = is_follow_up
         self.conversation.append(answer_record)
 
         logger.info(
             f"实时评分完成: interview_id={self.interview.id}, "
             f"stage={self.current_stage()}, score={score_result.get('total_score')}"
         )
-
-        # Search knowledge base docs relevant to current question
-        kb_docs = await self.rag_service.search_documents(query=question_text, top_k=3)
 
         # Evaluate answer with stage-specific max questions + follow_up limit
         stage_cfg = STAGE_CONFIG.get(self.current_stage(), STAGE_CONFIG["初筛"])
@@ -444,11 +447,12 @@ class InterviewOrchestrator:
             difficulty=self.interview.difficulty,
             limit=3,
         )
-        # Search knowledge base documents for relevant context
-        kb_docs = await self.rag_service.search_documents(query=stage, top_k=3)
+        # Search knowledge base docs with skills+position for better relevance
+        kb_query = " ".join(self.top_skills) + " " + self.interview.position if self.top_skills else self.interview.position
+        kb_docs = await self._search_kb(query=kb_query, top_k=5)
         logger.info(
             f"题库示例匹配: stage={stage}, skills={self.top_skills}, "
-            f"examples_found={len(examples)}, kb_docs_found={len(kb_docs)}"
+            f"examples_found={len(examples)}, kb_relevant={len(kb_docs)}, kb_query='{kb_query}'"
         )
         result = await self.interviewer.start_stage(
             stage=stage,
@@ -471,6 +475,28 @@ class InterviewOrchestrator:
             }
             self._add_pending_question()
         return result
+
+    async def _search_kb(self, query: str, top_k: int = 5) -> list[dict]:
+        """Search knowledge base with tag-based pre-filtering.
+
+        1. Match position against document tags to find relevant docs
+        2. If no tag match found, fall back to full-text search across all docs
+        3. Filter results by relevance score >= 0.4
+        """
+        matched_ids = await self.rag_service.match_document_ids(self.interview.position)
+        if matched_ids is None:
+            return []
+        if not matched_ids:
+            logger.info(f"KB: 无标签匹配 '{self.interview.position}'，回退全文档搜索")
+
+        doc_ids = matched_ids if matched_ids else None
+        raw = await self.rag_service.search_documents(query=query, top_k=top_k, document_ids=doc_ids)
+        filtered = [d for d in raw if d.get("score", 0) >= 0.4]
+        logger.info(
+            f"KB搜索: query='{query[:60]}', tag_match={len(matched_ids) if matched_ids else 'all'}, "
+            f"raw={len(raw)}, relevant={len(filtered)}"
+        )
+        return filtered
 
     async def _next_stage_message(self) -> dict:
         """Advance to next stage or end interview."""

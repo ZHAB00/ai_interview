@@ -164,16 +164,15 @@ const POSITION_SKILL_MAP = {
   '运营专员':           ['数据分析', '用户增长', '内容运营', '活动策划', '社群运营', 'SEO/SEM', '转化率优化'],
 }
 
-// Watch position change → auto-update skills (unless user manually edited)
+// Watch position change → auto-update skills only for quick-start (no real resume)
 watch(() => config.position, (newPos) => {
-  if (!newPos) return
+  if (!newPos || !isQuickStart.value) return
   const mappedSkills = POSITION_SKILL_MAP[newPos]
   if (mappedSkills && !skillEdited.value) {
     if (resumeData.value) {
       resumeData.value.skills = [...mappedSkills]
     }
   }
-  // Reset edit flag on position switch — user needs to confirm edits for new position
   skillEdited.value = false
 })
 

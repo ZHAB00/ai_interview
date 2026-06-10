@@ -5,6 +5,7 @@ NOT to serve questions directly to candidates.
 """
 
 import logging
+import random
 
 from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -85,8 +86,12 @@ class RAGService:
 
         scored.sort(key=lambda x: x[0], reverse=True)
 
+        # Take top (limit * 2) by score, then randomly sample for variety
+        pool = scored[:limit * 2]
+        if len(pool) > limit:
+            pool = random.sample(pool, limit)
         examples = []
-        for score, q in scored[:limit]:
+        for score, q in pool:
             examples.append({
                 "question_text": q.question_text,
                 "skill_tags": q.skill_tags or [],
@@ -138,10 +143,41 @@ class RAGService:
 
         return matched if matched else questions
 
-    async def search_documents(self, query: str, top_k: int = 3) -> list[dict]:
+    async def match_document_ids(self, position: str) -> list[int] | None:
+        """Find document IDs whose tags match the target position.
+
+        Returns None if no documents exist (caller should skip KB).
+        Returns a list of matching IDs, or empty list if no tag match
+        (caller should fall back to full-text search).
+        """
+        from app.models.document import Document
+        result = await self.db.execute(
+            select(Document).where(Document.status == "ready")
+        )
+        docs = result.scalars().all()
+        if not docs:
+            return None  # No documents at all
+
+        position_lower = position.lower()
+        matched_ids = []
+        for doc in docs:
+            tags = doc.tags or []
+            # Match: position contains tag OR tag contains position keyword
+            for tag in tags:
+                tag_lower = tag.lower()
+                if tag_lower in position_lower or any(
+                    word in tag_lower for word in position_lower.split()
+                ):
+                    matched_ids.append(doc.id)
+                    break
+        return matched_ids  # Empty = no match, fall back to full-text
+
+    async def search_documents(
+        self, query: str, top_k: int = 3, document_ids: list[int] | None = None
+    ) -> list[dict]:
         """Search knowledge base documents via FAISS vector similarity."""
         try:
-            results = await faiss_search(query, top_k=top_k)
+            results = await faiss_search(query, top_k=top_k, document_ids=document_ids)
             return results
         except Exception as e:
             logger.warning(f"FAISS 检索失败: {e}")

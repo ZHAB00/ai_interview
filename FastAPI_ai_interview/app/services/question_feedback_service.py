@@ -56,6 +56,11 @@ class QuestionFeedbackService:
             skill_tags = entry.get("skill_tags", [])
             if not isinstance(skill_tags, list):
                 skill_tags = []
+            # Derive tags from position + skill_tags if empty
+            tags = list(skill_tags) if skill_tags else []
+            if position:
+                tags.append(position)
+            tags = list(set(tags))  # deduplicate
 
             question = Question(
                 stage=stage,
@@ -68,6 +73,7 @@ class QuestionFeedbackService:
                 source="auto",
                 source_interview_id=interview_id,
                 skill_tags=skill_tags,
+                tags=tags,
             )
             self.db.add(question)
             saved += 1

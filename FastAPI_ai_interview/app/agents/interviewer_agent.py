@@ -57,24 +57,27 @@ STAGE_CONFIG = {
         ),
     },
     "技术面": {
-        "max_questions": 2,
-        "max_follow_ups": 4,
-        "strictness": "严格",
-        "focus": "深挖技术栈，层层递进：基础概念 → 底层原理 → 极端场景 → 系统设计。每个回答必须继续深挖，直到候选人触及知识边界。",
+        "max_questions": 4,
+        "max_follow_ups": 3,
+        "strictness": "中等偏严",
+        "focus": "多角度考察技术栈掌握情况。宽覆盖、适度深挖。不要死钻一个方向，多换不同的技能点和场景。",
         "evaluate_guide": (
-            "评估标准（强制深挖）：\n"
-            "- 回答正确且深入 → follow_up 继续深挖下一层\n"
-            "- 回答正确但不够深 → follow_up 追问'为什么''还有什么方案'\n"
-            "- 回答有误 → follow_up 指出并看候选人如何修正\n"
-            "- 连续两次触及知识边界 → ask_question 换技术主题\n"
-            "- 所有主题深挖完毕 → stage_complete\n"
-            "追问层级示例：概念 → 原理 → '量级扩大100倍怎么处理' → '如果换一个完全不同的场景呢'"
+            "评估标准（灵活追问）：\n"
+            "- 回答清楚深入 → 60%概率直接 ask_question 换下一个主题，40%概率 follow_up 追问一层\n"
+            "- 回答正确但不够深 → follow_up 追问\n"
+            "- 回答模糊 → follow_up 追问确认\n"
+            "- 回答有明显错误 → follow_up 指出看修正\n"
+            "- 追问答对了 → 加分后 ask_question 换主题\n"
+            "- 追问答不上 → 1-2次后直接 ask_question，不要连追三次\n"
+            "- 主问题问完且每个都至少有1-2层追问 → stage_complete\n"
+            "注意：每个回答都要仔细评估，追问要有意义，不要为了凑数追问。"
         ),
         "question_guide": (
             "出题要求：\n"
-            "- 从简历最强技能出发，出一道可以层层深挖的题\n"
-            "- 第1层：基础概念或场景设计\n"
-            "- 不要一次性把问题说全，留空间让追问逐步深入"
+            "- 从简历技能出发，每种技能出一题\n"
+            "- 覆盖面优先，不要盯着一个点问到底\n"
+            "- 题目难度递进：第一题基础概念，后面逐渐加深或扩展\n"
+            "- 每题的初始角度不要重复"
         ),
     },
     "终面": {
@@ -122,6 +125,8 @@ class InterviewerAgent(BaseAgent):
             "3. 保持专业、友好但不失严谨的语气\n\n"
             "核心规则：\n"
             "- 问题必须基于候选人简历中的实际技能和经验\n"
+            "- 每次面试出题应有变化，即使同一技能也要从不同角度切入，"
+            "不要重复使用相同的问法\n"
             "- 不要在问题中包含答案提示\n"
             "- 根据难度级别调整问题深度\n"
             "- 不要虚构候选人没有提到的技能、项目或错误\n"
@@ -188,7 +193,8 @@ class InterviewerAgent(BaseAgent):
             kb_str = "\n\n【知识库参考文档】\n"
             for i, doc in enumerate(kb_documents[:3], 1):
                 kb_str += f"\n参考{i} (score={doc['score']:.2f}): {doc['text'][:500]}\n"
-            kb_str += "出题时可以引用知识库中的概念、技术标准或方法论。\n"
+            kb_str += ("请务必从以上知识库文档中出题。优先选择与候选人技能匹配的题目，"
+                       "问题应直接引用文档中的具体知识点或场景。\n")
 
         # JD context — prioritize company requirements over resume self-reported skills
         jd_str = ""
@@ -264,7 +270,8 @@ class InterviewerAgent(BaseAgent):
             kb_str = "\n\n【知识库参考】\n"
             for i, doc in enumerate(kb_documents[:3], 1):
                 kb_str += f"{i}. {doc['text'][:400]}\n"
-            kb_str += "评估时可对照知识库内容判断候选人回答的准确性和深度。\n"
+            kb_str += ("评估时必须对照知识库内容判断候选人回答的准确性和深度。"
+                       "如果候选人回答与文档内容不符或遗漏关键点，应追问纠正。\n")
 
         # JD context for evaluation
         jd_str = ""

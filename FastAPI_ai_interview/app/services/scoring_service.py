@@ -33,6 +33,7 @@ class ScoringService:
         stage: str = "",
         position: str = "",
         difficulty: str = "中级",
+        kb_documents: list[dict] | None = None,
     ) -> dict[str, Any]:
         """Score a single answer and return structured evaluation."""
         logger.info(
@@ -47,53 +48,94 @@ class ScoringService:
             stage=stage,
             position=position,
             difficulty=difficulty,
+            kb_documents=kb_documents,
         )
         logger.info(f"评分完成: total_score={result.get('total_score')}")
         return result
 
     @staticmethod
     def aggregate_dimensions(answers: list[dict]) -> dict[str, Any]:
-        """Aggregate scores across all answers into final dimension averages.
+        """Aggregate answers with topic-based weighting.
 
-        Returns overall_score, dimensions map, and pass/fail determination.
+        Each topic = one main question + its follow-ups.
+        Topic score = main_score * 0.6 + avg_follow_up_score * 0.4.
+        No follow-ups → topic score = main_score (100%).
+        Overall = average of all topic scores.
+        Dimensions = simple average across all answers (no weighting).
+        Legacy answers (no is_follow_up field) form individual topics.
         """
         from app.core.config import settings
 
         threshold = getattr(settings, "PASS_THRESHOLD", 60)
-        dim_scores: dict[str, list[float]] = {d: [] for d in SCORING_DIMENSIONS}
 
+        # --- Group into topics ---
+        topics: list[list[dict]] = []
+        current: list[dict] = []
         for ans in answers:
-            dims = ans.get("dimensions_scores", {})
-            for d in SCORING_DIMENSIONS:
-                score = dims.get(d)
-                if score is not None:
-                    dim_scores[d].append(float(score))
+            if ans.get("pending_question"):
+                continue
+            # None (legacy) or False = new topic
+            if not ans.get("is_follow_up"):
+                if current:
+                    topics.append(current)
+                current = [ans]
+            else:
+                current.append(ans)
+        if current:
+            topics.append(current)
 
+        # --- Compute topic scores + dimension averages ---
+        dim_scores: dict[str, list[float]] = {d: [] for d in SCORING_DIMENSIONS}
+        topic_totals: list[float] = []
+
+        for topic in topics:
+            main_score = 0.0
+            fu_scores: list[float] = []
+
+            for ans in topic:
+                score = ans.get("score", 0)
+                if ans.get("is_follow_up"):
+                    fu_scores.append(float(score))
+                else:
+                    main_score = float(score)
+
+                dims = ans.get("dimensions_scores", {})
+                for d in SCORING_DIMENSIONS:
+                    val = dims.get(d)
+                    if val is not None:
+                        dim_scores[d].append(float(val))
+
+            # Weighted topic total: main 60% + fu_avg 40%
+            if fu_scores:
+                fu_avg = sum(fu_scores) / len(fu_scores)
+                topic_total = round(main_score * 0.6 + fu_avg * 0.4)
+            else:
+                topic_total = round(main_score)
+
+            topic_totals.append(topic_total)
+
+        # --- Averages ---
         avg_dimensions = {}
         for d, scores in dim_scores.items():
             avg_dimensions[d] = round(sum(scores) / len(scores)) if scores else 0
 
-        # Overall score: weighted average (excluding zero contribution from missing dimensions)
-        all_scores = [s for scores in dim_scores.values() for s in scores]
-        overall = round(sum(all_scores) / len(all_scores)) if all_scores else 0
+        overall = round(sum(topic_totals) / len(topic_totals)) if topic_totals else 0
 
-        # Pass: every dimension above threshold
         lowest = min(avg_dimensions.values()) if avg_dimensions else 0
-        passed = lowest >= threshold
+        passed = overall >= threshold and lowest >= threshold
 
+        logger.info(
+            f"加权评分: topics={len(topic_totals)}, totals={topic_totals}, "
+            f"overall={overall}, passed={passed}"
+        )
         return {
             "overall_score": overall,
             "dimensions": avg_dimensions,
             "passed": passed,
             "threshold": threshold,
+            "topic_count": len(topic_totals),
             "lowest_dimension": min(avg_dimensions, key=avg_dimensions.get) if avg_dimensions else "",
         }
-
-        logger.info(
-            f"维度聚合完成: overall={overall}, passed={passed}, "
-            f"lowest={result.get('lowest_dimension')}={result['dimensions'].get(result['lowest_dimension'], 0)}"
-        )
-        return result
 
     @staticmethod
     def build_answer_record(

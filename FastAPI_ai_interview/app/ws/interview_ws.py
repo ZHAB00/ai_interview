@@ -71,7 +71,15 @@ async def interview_handler(websocket: WebSocket, interview_id: int, token: str)
         # ===== Authentication =====
         interview = await _authenticate(db, interview_id, token)
         if not interview:
-            await websocket.close(code=4001, reason="认证失败")
+            # Check if interview is completed — redirect to report instead of auth failure
+            result = await db.execute(
+                select(Interview).where(Interview.id == interview_id)
+            )
+            ended = result.scalar_one_or_none()
+            if ended and ended.status in ("completed", "abandoned"):
+                await websocket.close(code=4000, reason="面试已结束")
+            else:
+                await websocket.close(code=4001, reason="认证失败")
             return
 
         logger.info(

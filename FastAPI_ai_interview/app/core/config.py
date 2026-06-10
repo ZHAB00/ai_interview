@@ -80,6 +80,7 @@ class Settings(BaseSettings):
     DASHSCOPE_TTS_MODEL: str = "qwen3-tts-flash"
     DASHSCOPE_TTS_VOICE: str = "Cherry"
     DASHSCOPE_TTS_LANGUAGE: str = ""
+    TTS_SPEECH_RATE: float = 1.2  # 1.0 = normal, 1.2 = slightly faster
 
     # Legacy NLS (fallback when DASHSCOPE_API_KEY is empty)
     ALIYUN_ACCESS_KEY_ID: str = ""

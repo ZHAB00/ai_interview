@@ -124,6 +124,9 @@ export function useInterview(options = {}) {
     onJsonMessage: handleMessage,
     onAudioChunk: queueAudioChunk,
     onStatusChange: (status) => { store.wsStatus = status },
+    onInterviewEnded: () => {
+      router.push('/dashboard')
+    },
     onAuthFailure: async () => {
       // Token expired or invalid — get fresh token from reconnect API (max 1 retry)
       if (store._authRetryCount) {

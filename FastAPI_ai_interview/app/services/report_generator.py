@@ -57,6 +57,19 @@ class ReportGenerator:
         text_answers = [a for a in answers if not a.get("type") and not a.get("pending_question")]  # exclude coding + pending
         aggregation = ScoringService.aggregate_dimensions(text_answers)
 
+        # Search knowledge base with tag filtering for report context
+        from app.services.rag_service import RAGService
+        rag_svc = RAGService(self.db)
+        matched_ids = await rag_svc.match_document_ids(interview.position)
+        if matched_ids is None:
+            kb_docs = []
+        else:
+            doc_ids = matched_ids if matched_ids else None
+            raw_kb = await rag_svc.search_documents(
+                query=interview.position, top_k=5, document_ids=doc_ids
+            )
+            kb_docs = [d for d in raw_kb if d.get("score", 0) >= 0.4]
+
         # Generate narrative report via ReportAgent.
         # If the resume was uploaded for a different position than this interview,
         # discard the stale match_feedback — it references the wrong position.
@@ -74,6 +87,7 @@ class ReportGenerator:
             position_match_score=match_score,
             match_feedback=match_fb,
             jd_analysis=interview.jd_analysis,
+            kb_documents=kb_docs,
         )
 
         # Build stage breakdown
@@ -191,6 +205,7 @@ class ReportGenerator:
                         else a.get("user_answer_text", ""),
                         "score": a.get("score", 0),
                         "dimensions_scores": a.get("dimensions_scores", {}),
+                        "is_follow_up": a.get("is_follow_up", False),
                         "user_audio_url": a.get("user_audio_url", ""),
                         "strengths": a.get("strengths", []),
                         "weaknesses": a.get("weaknesses", []),

@@ -70,6 +70,7 @@ class ScoringAgent(BaseAgent):
         stage: str = "",
         position: str = "",
         difficulty: str = "中级",
+        kb_documents: list[dict] | None = None,
     ) -> dict[str, Any]:
         """Score a single answer across all five dimensions."""
         logger.info(f"开始评分: stage={stage}, difficulty={difficulty}")
@@ -85,6 +86,13 @@ class ScoringAgent(BaseAgent):
         if sample_answer:
             sample_str = f"参考答案：{sample_answer}\n"
 
+        kb_str = ""
+        if kb_documents:
+            kb_str = "\n【知识库参考 — 评分时对照验证准确性和深度】\n"
+            for i, doc in enumerate(kb_documents[:3], 1):
+                kb_str += f"{i}. {doc['text'][:400]}\n"
+            kb_str += "请对照以上知识库内容判断候选人回答中有无事实错误或遗漏关键点。\n"
+
         messages = [{
             "role": "user",
             "content": (
@@ -94,6 +102,7 @@ class ScoringAgent(BaseAgent):
                 f"题目：{question_text}\n"
                 f"{scoring_str}"
                 f"{sample_str}"
+                f"{kb_str}"
                 f"候选人回答：{sanitize_user_input(user_answer)}\n\n"
                 f"请对以上回答进行五维度评分，识别事实错误和深度不足，返回 JSON 格式结果。"
             ),
